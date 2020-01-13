@@ -60,6 +60,8 @@ NavigatorWidget.prototype.execute = function() {
 	// Get our parameters
 	this.storyTitle = this.getAttribute("story");
 	this.historyTitle = this.getAttribute("history");
+	this.setVariable("tv-story-list",this.storyTitle);
+	this.setVariable("tv-history-list",this.historyTitle);
 	// Construct the child widgets
 	this.makeChildWidgets();
 };
@@ -82,83 +84,50 @@ NavigatorWidget.prototype.getStoryList = function() {
 };
 
 NavigatorWidget.prototype.saveStoryList = function(storyList) {
-	var storyTiddler = this.wiki.getTiddler(this.storyTitle);
-	this.wiki.addTiddler(new $tw.Tiddler(
-		{title: this.storyTitle},
-		storyTiddler,
-		{list: storyList}
-	));
+	if(this.storyTitle) {
+		var storyTiddler = this.wiki.getTiddler(this.storyTitle);
+		this.wiki.addTiddler(new $tw.Tiddler(
+			{title: this.storyTitle},
+			storyTiddler,
+			{list: storyList}
+		));		
+	}
 };
 
 NavigatorWidget.prototype.removeTitleFromStory = function(storyList,title) {
-	var p = storyList.indexOf(title);
-	while(p !== -1) {
-		storyList.splice(p,1);
-		p = storyList.indexOf(title);
+	if(storyList) {
+		var p = storyList.indexOf(title);
+		while(p !== -1) {
+			storyList.splice(p,1);
+			p = storyList.indexOf(title);
+		}		
 	}
 };
 
 NavigatorWidget.prototype.replaceFirstTitleInStory = function(storyList,oldTitle,newTitle) {
-	var pos = storyList.indexOf(oldTitle);
-	if(pos !== -1) {
-		storyList[pos] = newTitle;
-		do {
-			pos = storyList.indexOf(oldTitle,pos + 1);
-			if(pos !== -1) {
-				storyList.splice(pos,1);
-			}
-		} while(pos !== -1);
-	} else {
-		storyList.splice(0,0,newTitle);
+	if(storyList) {
+		var pos = storyList.indexOf(oldTitle);
+		if(pos !== -1) {
+			storyList[pos] = newTitle;
+			do {
+				pos = storyList.indexOf(oldTitle,pos + 1);
+				if(pos !== -1) {
+					storyList.splice(pos,1);
+				}
+			} while(pos !== -1);
+		} else {
+			storyList.splice(0,0,newTitle);
+		}		
 	}
 };
 
 NavigatorWidget.prototype.addToStory = function(title,fromTitle) {
-	var storyList = this.getStoryList();
-	// Quit if we cannot get hold of the story list
-	if(!storyList) {
-		return;
+	if(this.storyTitle) {
+		this.wiki.addToStory(title,fromTitle,this.storyTitle,{
+			openLinkFromInsideRiver: this.getAttribute("openLinkFromInsideRiver","top"),
+			openLinkFromOutsideRiver: this.getAttribute("openLinkFromOutsideRiver","top")
+		});
 	}
-	// See if the tiddler is already there
-	var slot = storyList.indexOf(title);
-	// Quit if it already exists in the story river
-	if(slot >= 0) {
-		return;
-	}
-	// First we try to find the position of the story element we navigated from
-	var fromIndex = storyList.indexOf(fromTitle);
-	if(fromIndex >= 0) {
-		// The tiddler is added from inside the river
-		// Determine where to insert the tiddler; Fallback is "below"
-		switch(this.getAttribute("openLinkFromInsideRiver","below")) {
-			case "top":
-				slot = 0;
-				break;
-			case "bottom":
-				slot = storyList.length;
-				break;
-			case "above":
-				slot = fromIndex;
-				break;
-			case "below": // Intentional fall-through
-			default:
-				slot = fromIndex + 1;
-				break;
-		}
-	} else {
-		// The tiddler is opened from outside the river. Determine where to insert the tiddler; default is "top"
-		if(this.getAttribute("openLinkFromOutsideRiver","top") === "bottom") {
-			// Insert at bottom
-			slot = storyList.length;
-		} else {
-			// Insert at top
-			slot = 0;
-		}
-	}
-	// Add the tiddler
-	storyList.splice(slot,0,title);
-	// Save the story
-	this.saveStoryList(storyList);
 };
 
 /*
@@ -174,6 +143,7 @@ NavigatorWidget.prototype.addToHistory = function(title,fromPageRect) {
 Handle a tm-navigate event
 */
 NavigatorWidget.prototype.handleNavigateEvent = function(event) {
+	event = $tw.hooks.invokeHook("th-navigating",event);
 	if(event.navigateTo) {
 		this.addToStory(event.navigateTo,event.navigateFromTitle);
 		if(!event.navigateSuppressNavigation) {
@@ -208,6 +178,10 @@ NavigatorWidget.prototype.handleCloseOtherTiddlersEvent = function(event) {
 
 // Place a tiddler in edit mode
 NavigatorWidget.prototype.handleEditTiddlerEvent = function(event) {
+	var editTiddler = $tw.hooks.invokeHook("th-editing-tiddler",event);
+	if(!editTiddler) {
+		return false;
+	}
 	var self = this;
 	function isUnmodifiedShadow(title) {
 		return self.wiki.isShadowTiddler(title) && !self.wiki.tiddlerExists(title);
@@ -245,6 +219,7 @@ NavigatorWidget.prototype.handleDeleteTiddlerEvent = function(event) {
 		tiddler = this.wiki.getTiddler(title),
 		storyList = this.getStoryList(),
 		originalTitle = tiddler ? tiddler.fields["draft.of"] : "",
+		originalTiddler = originalTitle ? this.wiki.getTiddler(originalTitle) : undefined,
 		confirmationTitle;
 	if(!tiddler) {
 		return false;
@@ -268,10 +243,14 @@ NavigatorWidget.prototype.handleDeleteTiddlerEvent = function(event) {
 	}
 	// Delete the original tiddler
 	if(originalTitle) {
+		if(originalTiddler) {
+			$tw.hooks.invokeHook("th-deleting-tiddler",originalTiddler);
+		}
 		this.wiki.deleteTiddler(originalTitle);
 		this.removeTitleFromStory(storyList,originalTitle);
 	}
-	// Delete this tiddler
+	// Invoke the hook function and delete this tiddler
+	$tw.hooks.invokeHook("th-deleting-tiddler",tiddler);
 	this.wiki.deleteTiddler(title);
 	// Remove the closed tiddler from the story
 	this.removeTitleFromStory(storyList,title);
@@ -311,13 +290,7 @@ NavigatorWidget.prototype.makeDraftTiddler = function(targetTitle) {
 Generate a title for the draft of a given tiddler
 */
 NavigatorWidget.prototype.generateDraftTitle = function(title) {
-	var c = 0,
-		draftTitle;
-	do {
-		draftTitle = "Draft " + (c ? (c + 1) + " " : "") + "of '" + title + "'";
-		c++;
-	} while(this.wiki.tiddlerExists(draftTitle));
-	return draftTitle;
+	return this.wiki.generateDraftTitle(title);
 };
 
 // Take a tiddler out of edit mode, saving the changes
@@ -382,6 +355,7 @@ console.log("Relinking '" + draftOf + "' to '" + draftTitle + "'");
 
 // Take a tiddler out of edit mode without saving the changes
 NavigatorWidget.prototype.handleCancelTiddlerEvent = function(event) {
+	event = $tw.hooks.invokeHook("th-cancelling-tiddler", event);
 	// Flip the specified tiddler from draft back to the original
 	var draftTitle = event.param || event.tiddlerTitle,
 		draftTiddler = this.wiki.getTiddler(draftTitle),
@@ -426,6 +400,7 @@ NavigatorWidget.prototype.handleCancelTiddlerEvent = function(event) {
 //
 // If a draft of the target tiddler already exists then it is reused
 NavigatorWidget.prototype.handleNewTiddlerEvent = function(event) {
+	event = $tw.hooks.invokeHook("th-new-tiddler", event);
 	// Get the story details
 	var storyList = this.getStoryList(),
 		templateTiddler, additionalFields, title, draftTitle, existingTiddler;
@@ -446,6 +421,13 @@ NavigatorWidget.prototype.handleNewTiddlerEvent = function(event) {
 	if(additionalFields && additionalFields.title) {
 		title = additionalFields.title;
 	}
+	// Make a copy of the additional fields excluding any blank ones
+	var filteredAdditionalFields = $tw.utils.extend({},additionalFields);
+	Object.keys(filteredAdditionalFields).forEach(function(fieldName) {
+		if(filteredAdditionalFields[fieldName] === "") {
+			delete filteredAdditionalFields[fieldName];
+		}
+	});
 	// Generate a title if we don't have one
 	title = title || this.wiki.generateNewTitle($tw.language.getString("DefaultNewTiddlerTitle"));
 	// Find any existing draft for this tiddler
@@ -476,9 +458,10 @@ NavigatorWidget.prototype.handleNewTiddlerEvent = function(event) {
 			"draft.title": title
 		},
 		templateTiddler,
-		existingTiddler,
 		additionalFields,
 		this.wiki.getCreationFields(),
+		existingTiddler,
+		filteredAdditionalFields,
 		{
 			title: draftTitle,
 			"draft.of": title,
@@ -486,12 +469,15 @@ NavigatorWidget.prototype.handleNewTiddlerEvent = function(event) {
 		},this.wiki.getModificationFields());
 	this.wiki.addTiddler(draftTiddler);
 	// Update the story to insert the new draft at the top and remove any existing tiddler
-	if(storyList.indexOf(draftTitle) === -1) {
+	if(storyList && storyList.indexOf(draftTitle) === -1) {
 		var slot = storyList.indexOf(event.navigateFromTitle);
+		if(slot === -1) {
+			slot = this.getAttribute("openLinkFromOutsideRiver","top") === "bottom" ? storyList.length - 1 : slot;
+		}
 		storyList.splice(slot + 1,0,draftTitle);
 	}
-	if(storyList.indexOf(title) !== -1) {
-		storyList.splice(storyList.indexOf(title),1);		
+	if(storyList && storyList.indexOf(title) !== -1) {
+		storyList.splice(storyList.indexOf(title),1);
 	}
 	this.saveStoryList(storyList);
 	// Add a new record to the top of the history stack
@@ -504,7 +490,7 @@ NavigatorWidget.prototype.handleImportTiddlersEvent = function(event) {
 	// Get the tiddlers
 	var tiddlers = [];
 	try {
-		tiddlers = JSON.parse(event.param);	
+		tiddlers = JSON.parse(event.param);
 	} catch(e) {
 	}
 	// Get the current $:/Import tiddler
@@ -520,6 +506,7 @@ NavigatorWidget.prototype.handleImportTiddlersEvent = function(event) {
 	// Process each tiddler
 	importData.tiddlers = importData.tiddlers || {};
 	$tw.utils.each(tiddlers,function(tiddlerFields) {
+		tiddlerFields.title = $tw.utils.trim(tiddlerFields.title);
 		var title = tiddlerFields.title;
 		if(title) {
 			incomingTiddlers.push(title);
@@ -545,7 +532,7 @@ NavigatorWidget.prototype.handleImportTiddlersEvent = function(event) {
 		var storyList = this.getStoryList(),
 			history = [];
 		// Add it to the story
-		if(storyList.indexOf(IMPORT_TITLE) === -1) {
+		if(storyList && storyList.indexOf(IMPORT_TITLE) === -1) {
 			storyList.unshift(IMPORT_TITLE);
 		}
 		// And to history
@@ -557,7 +544,7 @@ NavigatorWidget.prototype.handleImportTiddlersEvent = function(event) {
 	return false;
 };
 
-// 
+//
 NavigatorWidget.prototype.handlePerformImportEvent = function(event) {
 	var self = this,
 		importTiddler = this.wiki.getTiddler(event.param),
@@ -568,7 +555,9 @@ NavigatorWidget.prototype.handlePerformImportEvent = function(event) {
 	$tw.utils.each(importData.tiddlers,function(tiddlerFields) {
 		var title = tiddlerFields.title;
 		if(title && importTiddler && importTiddler.fields["selection-" + title] !== "unchecked") {
-			self.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
+			var tiddler = new $tw.Tiddler(tiddlerFields);
+			tiddler = $tw.hooks.invokeHook("th-importing-tiddler",tiddler);
+			self.wiki.addTiddler(tiddler);
 			importReport.push("# [[" + tiddlerFields.title + "]]");
 		}
 	});
@@ -604,7 +593,7 @@ NavigatorWidget.prototype.handleFoldOtherTiddlersEvent = function(event) {
 NavigatorWidget.prototype.handleFoldAllTiddlersEvent = function(event) {
 	var self = this,
 		paramObject = event.paramObject || {},
-		prefix = paramObject.foldedStatePrefix;
+		prefix = paramObject.foldedStatePrefix || "$:/state/folded/";
 	$tw.utils.each(this.getStoryList(),function(title) {
 		self.wiki.setText(prefix + title,"text",null,"hide");
 	});
@@ -623,7 +612,7 @@ NavigatorWidget.prototype.handleRenameTiddlerEvent = function(event) {
 	var paramObject = event.paramObject || {},
 		from = paramObject.from || event.tiddlerTitle,
 		to = paramObject.to;
-	$tw.wiki.renameTiddler(from,to);
+	this.wiki.renameTiddler(from,to);
 };
 
 exports.navigator = NavigatorWidget;

@@ -12,12 +12,55 @@ Various static utility functions.
 /*global $tw: false */
 "use strict";
 
+var base64utf8 = require("$:/core/modules/utils/base64-utf8/base64-utf8.module.js");
+
+/*
+Display a message, in colour if we're on a terminal
+*/
+exports.log = function(text,colour) {
+	console.log($tw.node ? exports.terminalColour(colour) + text + exports.terminalColour() : text);
+};
+
+exports.terminalColour = function(colour) {
+	if(!$tw.browser && $tw.node && process.stdout.isTTY) {
+		if(colour) {
+			var code = exports.terminalColourLookup[colour];
+			if(code) {
+				return "\x1b[" + code + "m";
+			}
+		} else {
+			return "\x1b[0m"; // Cancel colour
+		}
+	}
+	return "";
+};
+
+exports.terminalColourLookup = {
+	"black": "0;30",
+	"red": "0;31",
+	"green": "0;32",
+	"brown/orange": "0;33",
+	"blue": "0;34",
+	"purple": "0;35",
+	"cyan": "0;36",
+	"light gray": "0;37"
+};
+
 /*
 Display a warning, in colour if we're on a terminal
 */
 exports.warning = function(text) {
-	console.log($tw.node ? "\x1b[1;33m" + text + "\x1b[0m" : text);
+	exports.log(text,"brown/orange");
 };
+
+/*
+Return the integer represented by the str (string).
+Return the dflt (default) parameter if str is not a base-10 number.
+*/
+exports.getInt = function(str,deflt) {
+	var i = parseInt(str,10);
+	return isNaN(i) ? deflt : i;
+}
 
 /*
 Repeatedly replaces a substring within a string. Like String.prototype.replace, but without any of the default special handling of $ sequences in the replace string
@@ -51,6 +94,20 @@ exports.trim = function(str) {
 	}
 };
 
+/*
+Convert a string to sentence case (ie capitalise first letter)
+*/
+exports.toSentenceCase = function(str) {
+	return (str || "").replace(/^\S/, function(c) {return c.toUpperCase();});
+}
+
+/*
+Convert a string to title case (ie capitalise each initial letter)
+*/
+exports.toTitleCase = function(str) {
+	return (str || "").replace(/(^|\s)\S/g, function(c) {return c.toUpperCase();});
+}
+	
 /*
 Find the line break preceding a given position in a string
 Returns position immediately after that line break, or the start of the string
@@ -92,60 +149,15 @@ exports.count = function(object) {
 };
 
 /*
-Check if an array is equal by value and by reference.
+Determine whether an array-item is an object-property
 */
-exports.isArrayEqual = function(array1,array2) {
-	if(array1 === array2) {
-		return true;
-	}
-	array1 = array1 || [];
-	array2 = array2 || [];
-	if(array1.length !== array2.length) {
-		return false;
-	}
-	return array1.every(function(value,index) {
-		return value === array2[index];
-	});
-};
-
-/*
-Push entries onto an array, removing them first if they already exist in the array
-	array: array to modify (assumed to be free of duplicates)
-	value: a single value to push or an array of values to push
-*/
-exports.pushTop = function(array,value) {
-	var t,p;
-	if($tw.utils.isArray(value)) {
-		// Remove any array entries that are duplicated in the new values
-		if(value.length !== 0) {
-			if(array.length !== 0) {
-				if(value.length < array.length) {
-					for(t=0; t<value.length; t++) {
-						p = array.indexOf(value[t]);
-						if(p !== -1) {
-							array.splice(p,1);
-						}
-					}
-				} else {
-					for(t=array.length-1; t>=0; t--) {
-						p = value.indexOf(array[t]);
-						if(p !== -1) {
-							array.splice(t,1);
-						}
-					}
-				}
-			}
-			// Push the values on top of the main array
-			array.push.apply(array,value);
+exports.hopArray = function(object,array) {
+	for(var i=0; i<array.length; i++) {
+		if($tw.utils.hop(object,array[i])) {
+			return true;
 		}
-	} else {
-		p = array.indexOf(value);
-		if(p !== -1) {
-			array.splice(p,1);
-		}
-		array.push(value);
 	}
-	return array;
+	return false;
 };
 
 /*
@@ -224,11 +236,13 @@ exports.extendDeepCopy = function(object,extendedProperties) {
 
 exports.deepFreeze = function deepFreeze(object) {
 	var property, key;
-	Object.freeze(object);
-	for(key in object) {
-		property = object[key];
-		if($tw.utils.hop(object,key) && (typeof property === "object") && !Object.isFrozen(property)) {
-			deepFreeze(property);
+	if(object) {
+		Object.freeze(object);
+		for(key in object) {
+			property = object[key];
+			if($tw.utils.hop(object,key) && (typeof property === "object") && !Object.isFrozen(property)) {
+				deepFreeze(property);
+			}
 		}
 	}
 };
@@ -264,6 +278,9 @@ exports.formatDateString = function(date,template) {
 			}],
 			[/^0ss/, function() {
 				return $tw.utils.pad(date.getSeconds());
+			}],
+			[/^0XXX/, function() {
+				return $tw.utils.pad(date.getMilliseconds(),3);
 			}],
 			[/^0DD/, function() {
 				return $tw.utils.pad(date.getDate());
@@ -306,6 +323,9 @@ exports.formatDateString = function(date,template) {
 			[/^ss/, function() {
 				return date.getSeconds();
 			}],
+			[/^XXX/, function() {
+				return date.getMilliseconds();
+			}],
 			[/^[AP]M/, function() {
 				return $tw.utils.getAmPm(date).toUpperCase();
 			}],
@@ -322,6 +342,16 @@ exports.formatDateString = function(date,template) {
 				return $tw.utils.pad(date.getFullYear() - 2000);
 			}]
 		];
+	// If the user wants everything in UTC, shift the datestamp
+	// Optimize for format string that essentially means
+	// 'return raw UTC (tiddlywiki style) date string.'
+	if(t.indexOf("[UTC]") == 0 ) {
+		if(t == "[UTC]YYYY0MM0DD0hh0mm0ssXXX")
+			return $tw.utils.stringifyDate(new Date());
+		var offset = date.getTimezoneOffset() ; // in minutes
+		date = new Date(date.getTime()+offset*60*1000) ;
+		t = t.substr(5) ;
+	}
 	while(t.length){
 		var matchString = "";
 		$tw.utils.each(matches, function(m) {
@@ -438,15 +468,21 @@ exports.htmlEncode = function(s) {
 // Converts all HTML entities to their character equivalents
 exports.entityDecode = function(s) {
 	var converter = String.fromCodePoint || String.fromCharCode,
-		e = s.substr(1,s.length-2); // Strip the & and the ;
+		e = s.substr(1,s.length-2), // Strip the & and the ;
+		c;
 	if(e.charAt(0) === "#") {
 		if(e.charAt(1) === "x" || e.charAt(1) === "X") {
-			return converter(parseInt(e.substr(2),16));	
+			c = parseInt(e.substr(2),16);
 		} else {
-			return converter(parseInt(e.substr(1),10));
+			c = parseInt(e.substr(1),10);
+		}
+		if(isNaN(c)) {
+			return s;
+		} else {
+			return converter(c);
 		}
 	} else {
-		var c = $tw.config.htmlEntities[e];
+		c = $tw.config.htmlEntities[e];
 		if(c) {
 			return converter(c);
 		} else {
@@ -493,7 +529,24 @@ exports.stringify = function(s) {
 		.replace(/'/g, "\\'")              // single quote character
 		.replace(/\r/g, '\\r')             // carriage return
 		.replace(/\n/g, '\\n')             // line feed
-		.replace(/[\x80-\uFFFF]/g, exports.escape); // non-ASCII characters
+		.replace(/[\x00-\x1f\x80-\uFFFF]/g, exports.escape); // non-ASCII characters
+};
+
+// Turns a string into a legal JSON string
+// Derived from peg.js, thanks to David Majda
+exports.jsonStringify = function(s) {
+	// See http://www.json.org/
+	return (s || "")
+		.replace(/\\/g, '\\\\')            // backslash
+		.replace(/"/g, '\\"')              // double quote character
+		.replace(/\r/g, '\\r')             // carriage return
+		.replace(/\n/g, '\\n')             // line feed
+		.replace(/\x08/g, '\\b')           // backspace
+		.replace(/\x0c/g, '\\f')           // formfeed
+		.replace(/\t/g, '\\t')             // tab
+		.replace(/[\x00-\x1f\x80-\uFFFF]/g,function(s) {
+			return '\\u' + $tw.utils.pad(s.charCodeAt(0).toString(16).toUpperCase(),4);
+		}); // non-ASCII characters
 };
 
 /*
@@ -614,7 +667,7 @@ exports.extractVersionInfo = function() {
 Get the animation duration in ms
 */
 exports.getAnimationDuration = function() {
-	return parseInt($tw.wiki.getTiddlerText("$:/config/AnimationDuration","400"),10);
+	return parseInt($tw.wiki.getTiddlerText("$:/config/AnimationDuration","400"),10) || 0;
 };
 
 /*
@@ -632,12 +685,14 @@ exports.hashString = function(str) {
 Decode a base64 string
 */
 exports.base64Decode = function(string64) {
-	if($tw.browser) {
-		// TODO
-		throw "$tw.utils.base64Decode() doesn't work in the browser";
-	} else {
-		return (new Buffer(string64,"base64")).toString();
-	}
+	return base64utf8.base64.decode.call(base64utf8,string64);
+};
+
+/*
+Encode a string to base64
+*/
+exports.base64Encode = function(string64) {
+	return base64utf8.base64.encode.call(base64utf8,string64);
 };
 
 /*
@@ -657,7 +712,7 @@ High resolution microsecond timer for profiling
 exports.timer = function(base) {
 	var m;
 	if($tw.node) {
-		var r = process.hrtime();		
+		var r = process.hrtime();
 		m =  r[0] * 1e3 + (r[1] / 1e6);
 	} else if(window.performance) {
 		m = performance.now();
@@ -696,7 +751,6 @@ exports.tagToCssSelector = function(tagName) {
 		return "\\" + c;
 	});
 };
-
 
 /*
 IE does not have sign function

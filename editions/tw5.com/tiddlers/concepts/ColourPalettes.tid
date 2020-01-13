@@ -12,7 +12,7 @@ table-border: #ccc
 ...
 ```
 
-Several palettes form part of the core. The system tiddler [[$:/palette]] always contains the title of the currently selected palette tiddler. You can change a palette using the {{$:/core/images/palette}} ''palette'' button, found on the "Tools" tab in the sidebar.
+Several palettes form part of the core. The system tiddler [[$:/palette]] always contains the title of the currently selected palette tiddler. You can change a palette using the <<.icon $:/core/images/palette>> ''palette'' button, found on the "Tools" tab in the sidebar.
 
 To retrieve the value of a named colour from the current palette, e.g. for use in a stylesheet tiddler, use the <<.mlink colour>> macro:
 
@@ -26,5 +26,6 @@ Palette tiddlers should have the following fields:
 |title |Typically starting with `$:/` |
 |type |`application/x-tiddler-dictionary` |
 |tags |`$:/tags/Palette` |
+|name |Displayed in the palette browser |
 |description |Displayed in the palette browser |
 |text |`name: value` colour definitions |

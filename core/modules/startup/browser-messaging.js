@@ -29,16 +29,17 @@ function loadIFrame(url,callback) {
 		callback(null,iframeInfo);
 	} else {
 		// Create the iframe and save it in the list
-		var iframe = document.createElement("iframe"),
-			iframeInfo = {
-				url: url,
-				status: "loading",
-				domNode: iframe
-			};
+		var iframe = document.createElement("iframe");
+		iframeInfo = {
+			url: url,
+			status: "loading",
+			domNode: iframe
+		};
 		$tw.browserMessaging.iframeInfoMap[url] = iframeInfo;
 		saveIFrameInfoTiddler(iframeInfo);
 		// Add the iframe to the DOM and hide it
 		iframe.style.display = "none";
+		iframe.setAttribute("library","true");
 		document.body.appendChild(iframe);
 		// Set up onload
 		iframe.onload = function() {
@@ -55,6 +56,18 @@ function loadIFrame(url,callback) {
 			callback(ex);
 		}
 	}
+}
+
+/*
+Unload library iframe for given url
+*/
+function unloadIFrame(url){
+	$tw.utils.each(document.getElementsByTagName('iframe'), function(iframe) {
+		if(iframe.getAttribute("library") === "true" &&
+		  iframe.getAttribute("src") === url) {
+			iframe.parentNode.removeChild(iframe);
+		}
+	});
 }
 
 function saveIFrameInfoTiddler(iframeInfo) {
@@ -93,6 +106,21 @@ exports.startup = function() {
 			});
 		}
 	});
+	// Listen for widget messages to control unloading the plugin library
+	$tw.rootWidget.addEventListener("tm-unload-plugin-library",function(event) {
+		var paramObject = event.paramObject || {},
+			url = paramObject.url;
+		$tw.browserMessaging.iframeInfoMap[url] = undefined;
+		if(url) {
+			unloadIFrame(url);
+			$tw.utils.each(
+				$tw.wiki.filterTiddlers("[[$:/temp/ServerConnection/" + url + "]] [prefix[$:/temp/RemoteAssetInfo/" + url + "/]]"),
+				function(title) {
+					$tw.wiki.deleteTiddler(title);
+				}
+			);
+		}
+	});
 	$tw.rootWidget.addEventListener("tm-load-plugin-from-library",function(event) {
 		var paramObject = event.paramObject || {},
 			url = paramObject.url,
@@ -116,9 +144,9 @@ exports.startup = function() {
 	});
 	// Listen for window messages from other windows
 	window.addEventListener("message",function listener(event){
-		console.log("browser-messaging: ",document.location.toString())
-		console.log("browser-messaging: Received message from",event.origin);
-		console.log("browser-messaging: Message content",event.data);
+		// console.log("browser-messaging: ",document.location.toString())
+		// console.log("browser-messaging: Received message from",event.origin);
+		// console.log("browser-messaging: Message content",event.data);
 		switch(event.data.verb) {
 			case "GET-RESPONSE":
 				if(event.data.status.charAt(0) === "2") {

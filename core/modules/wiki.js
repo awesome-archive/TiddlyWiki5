@@ -28,6 +28,16 @@ var USER_NAME_TITLE = "$:/status/UserName",
 	TIMESTAMP_DISABLE_TITLE = "$:/config/TimestampDisable";
 
 /*
+Add available indexers to this wiki
+*/
+exports.addIndexersToWiki = function() {
+	var self = this;
+	$tw.utils.each($tw.modules.applyMethods("indexer"),function(Indexer,name) {
+		self.addIndexer(new Indexer(self),name);
+	});
+};
+
+/*
 Get the value of a text reference. Text references can have any of these forms:
 	<tiddlertitle>
 	<tiddlertitle>!!<fieldname>
@@ -211,6 +221,16 @@ exports.isImageTiddler = function(title) {
 	}
 };
 
+exports.isBinaryTiddler = function(title) {
+	var tiddler = this.getTiddler(title);
+	if(tiddler) {		
+		var contentTypeInfo = $tw.config.contentTypeInfo[tiddler.fields.type || "text/vnd.tiddlywiki"];
+		return !!contentTypeInfo && contentTypeInfo.encoding === "base64";
+	} else {
+		return null;
+	}
+};
+
 /*
 Like addTiddler() except it will silently reject any plugin tiddlers that are older than the currently loaded version. Returns true if the tiddler was imported
 */
@@ -329,7 +349,7 @@ Sort an array of tiddler titles by a specified field
 	isDescending: true if the sort should be descending
 	isCaseSensitive: true if the sort should consider upper and lower case letters to be different
 */
-exports.sortTiddlers = function(titles,sortField,isDescending,isCaseSensitive,isNumeric) {
+exports.sortTiddlers = function(titles,sortField,isDescending,isCaseSensitive,isNumeric,isAlphaNumeric) {
 	var self = this;
 	titles.sort(function(a,b) {
 		var x,y,
@@ -358,6 +378,8 @@ exports.sortTiddlers = function(titles,sortField,isDescending,isCaseSensitive,is
 		y = Number(b);
 		if(isNumeric && (!isNaN(x) || !isNaN(y))) {
 			return compareNumbers(x,y);
+		} else if(isAlphaNumeric) {
+			return isDescending ? b.localeCompare(a,undefined,{numeric: true,sensitivity: "base"}) : a.localeCompare(b,undefined,{numeric: true,sensitivity: "base"});
 		} else if($tw.utils.isDate(a) && $tw.utils.isDate(b)) {
 			return isDescending ? b - a : a - b;
 		} else {
@@ -476,11 +498,18 @@ exports.getOrphanTitles = function() {
 Retrieves a list of the tiddler titles that are tagged with a given tag
 */
 exports.getTiddlersWithTag = function(tag) {
-	var self = this;
-	return this.getGlobalCache("taglist-" + tag,function() {
-		var tagmap = self.getTagMap();
-		return self.sortByList(tagmap[tag],tag);
-	});
+	// Try to use the indexer
+	var self = this,
+		tagIndexer = this.getIndexer("TagIndexer"),
+		results = tagIndexer && tagIndexer.subIndexers[3].lookup(tag);
+	if(!results) {
+		// If not available, perform a manual scan
+		results = this.getGlobalCache("taglist-" + tag,function() {
+			var tagmap = self.getTagMap();
+			return self.sortByList(tagmap[tag],tag);
+		});
+	}
+	return results;
 };
 
 /*
@@ -536,6 +565,45 @@ exports.findListingsOfTiddler = function(targetTitle,fieldName) {
 Sorts an array of tiddler titles according to an ordered list
 */
 exports.sortByList = function(array,listTitle) {
+	var self = this,
+		replacedTitles = Object.create(null);
+	function replaceItem(title) {
+		if(!$tw.utils.hop(replacedTitles, title)) {
+			replacedTitles[title] = true;
+			var newPos = -1,
+				tiddler = self.getTiddler(title);
+			if(tiddler) {
+				var beforeTitle = tiddler.fields["list-before"],
+					afterTitle = tiddler.fields["list-after"];
+				if(beforeTitle === "") {
+					newPos = 0;
+				} else if(afterTitle === "") {
+					newPos = titles.length;
+				} else if(beforeTitle) {
+					replaceItem(beforeTitle);
+					newPos = titles.indexOf(beforeTitle);
+				} else if(afterTitle) {
+					replaceItem(afterTitle);
+					newPos = titles.indexOf(afterTitle);
+					if(newPos >= 0) {
+						++newPos;
+					}
+				}
+				// We get the currPos //after// figuring out the newPos, because recursive replaceItem calls might alter title's currPos
+				var currPos = titles.indexOf(title);
+				if(newPos === -1) {
+					newPos = currPos;
+				}
+				if(currPos >= 0 && newPos !== currPos) {
+					titles.splice(currPos,1);
+					if(newPos >= currPos) {
+						newPos--;
+					}
+					titles.splice(newPos,0,title);
+				}
+			}
+		}
+	}
 	var list = this.getTiddlerList(listTitle);
 	if(!array || array.length === 0) {
 		return [];
@@ -559,34 +627,7 @@ exports.sortByList = function(array,listTitle) {
 		var sortedTitles = titles.slice(0);
 		for(t=0; t<sortedTitles.length; t++) {
 			title = sortedTitles[t];
-			var currPos = titles.indexOf(title),
-				newPos = -1,
-				tiddler = this.getTiddler(title);
-			if(tiddler) {
-				var beforeTitle = tiddler.fields["list-before"],
-					afterTitle = tiddler.fields["list-after"];
-				if(beforeTitle === "") {
-					newPos = 0;
-				} else if(beforeTitle) {
-					newPos = titles.indexOf(beforeTitle);
-				} else if(afterTitle) {
-					newPos = titles.indexOf(afterTitle);
-					if(newPos >= 0) {
-						++newPos;
-					}
-				}
-				if(newPos === -1) {
-					newPos = currPos;
-				}
-				if(newPos !== currPos) {
-					titles.splice(currPos,1);
-					if(newPos >= currPos) {
-						newPos--;
-					}
-					titles.splice(newPos,0,title);
-				}
-			}
-
+			replaceItem(title);
 		}
 		return titles;
 	}
@@ -619,6 +660,22 @@ exports.getTiddlerAsJson = function(title) {
 	}
 };
 
+exports.getTiddlersAsJson = function(filter) {
+	var tiddlers = this.filterTiddlers(filter),
+		data = [];
+	for(var t=0;t<tiddlers.length; t++) {
+		var tiddler = this.getTiddler(tiddlers[t]);
+		if(tiddler) {
+			var fields = new Object();
+			for(var field in tiddler.fields) {
+				fields[field] = tiddler.getFieldString(field);
+			}
+			data.push(fields);
+		}
+	}
+	return JSON.stringify(data,null,$tw.config.preferences.jsonSpaces);
+};
+
 /*
 Get the content of a tiddler as a JavaScript object. How this is done depends on the type of the tiddler:
 
@@ -641,10 +698,10 @@ exports.getTiddlerDataCached = function(titleOrTiddler,defaultData) {
 	if(tiddler) {
 		return this.getCacheForTiddler(tiddler.fields.title,"data",function() {
 			// Return the frozen value
-			var value = self.getTiddlerData(tiddler.fields.title,defaultData);
+			var value = self.getTiddlerData(tiddler.fields.title,undefined);
 			$tw.utils.deepFreeze(value);
 			return value;
-		});
+		}) || defaultData;
 	} else {
 		return defaultData;
 	}
@@ -680,7 +737,7 @@ exports.getTiddlerData = function(titleOrTiddler,defaultData) {
 Extract an indexed field from within a data tiddler
 */
 exports.extractTiddlerDataItem = function(titleOrTiddler,index,defaultText) {
-	var data = this.getTiddlerData(titleOrTiddler,Object.create(null)),
+	var data = this.getTiddlerDataCached(titleOrTiddler,Object.create(null)),
 		text;
 	if(data && $tw.utils.hop(data,index)) {
 		text = data[index];
@@ -781,6 +838,14 @@ exports.initParsers = function(moduleType) {
 			}
 		}
 	});
+	// Use the generic binary parser for any binary types not registered so far
+	if($tw.Wiki.parsers["application/octet-stream"]) {
+		Object.keys($tw.config.contentTypeInfo).forEach(function(type) {
+			if(!$tw.utils.hop($tw.Wiki.parsers,type) && $tw.config.contentTypeInfo[type].encoding === "base64") {
+				$tw.Wiki.parsers[type] = $tw.Wiki.parsers["application/octet-stream"];
+			}
+		});		
+	}
 };
 
 /*
@@ -843,7 +908,7 @@ exports.parseTextReference = function(title,field,index,options) {
 	}
 	if(field === "text" || (!field && !index)) {
 		if(tiddler && tiddler.fields) {
-			return this.parseText(tiddler.fields.type || "text/vnd.tiddlywiki",tiddler.fields.text,options);			
+			return this.parseText(tiddler.fields.type,tiddler.fields.text,options);			
 		} else {
 			return null;
 		}
@@ -1009,8 +1074,14 @@ Options available:
 	exclude: An array of tiddler titles to exclude from the search
 	invert: If true returns tiddlers that do not contain the specified string
 	caseSensitive: If true forces a case sensitive search
-	literal: If true, searches for literal string, rather than separate search terms
-	field: If specified, restricts the search to the specified field
+	field: If specified, restricts the search to the specified field, or an array of field names
+	anchored: If true, forces all but regexp searches to be anchored to the start of text
+	excludeField: If true, the field options are inverted to specify the fields that are not to be searched
+	The search mode is determined by the first of these boolean flags to be true
+		literal: searches for literal string
+		whitespace: same as literal except runs of whitespace are treated as a single space
+		regexp: treats the search term as a regular expression
+		words: (default) treats search string as a list of tokens, and matches if all tokens are found, regardless of adjacency or ordering
 */
 exports.search = function(text,options) {
 	options = options || {};
@@ -1019,12 +1090,28 @@ exports.search = function(text,options) {
 		invert = !!options.invert;
 	// Convert the search string into a regexp for each term
 	var terms, searchTermsRegExps,
-		flags = options.caseSensitive ? "" : "i";
+		flags = options.caseSensitive ? "" : "i",
+		anchor = options.anchored ? "^" : "";
 	if(options.literal) {
 		if(text.length === 0) {
 			searchTermsRegExps = null;
 		} else {
-			searchTermsRegExps = [new RegExp("(" + $tw.utils.escapeRegExp(text) + ")",flags)];
+			searchTermsRegExps = [new RegExp("(" + anchor + $tw.utils.escapeRegExp(text) + ")",flags)];
+		}
+	} else if(options.whitespace) {
+		terms = [];
+		$tw.utils.each(text.split(/\s+/g),function(term) {
+			if(term) {
+				terms.push($tw.utils.escapeRegExp(term));
+			}
+		});
+		searchTermsRegExps = [new RegExp("(" + anchor + terms.join("\\s+") + ")",flags)];
+	} else if(options.regexp) {
+		try {
+			searchTermsRegExps = [new RegExp("(" + text + ")",flags)];			
+		} catch(e) {
+			searchTermsRegExps = null;
+			console.log("Regexp error parsing /(" + text + ")/" + flags + ": ",e);
 		}
 	} else {
 		terms = text.split(/ +/);
@@ -1033,38 +1120,88 @@ exports.search = function(text,options) {
 		} else {
 			searchTermsRegExps = [];
 			for(t=0; t<terms.length; t++) {
-				searchTermsRegExps.push(new RegExp("(" + $tw.utils.escapeRegExp(terms[t]) + ")",flags));
+				searchTermsRegExps.push(new RegExp("(" + anchor + $tw.utils.escapeRegExp(terms[t]) + ")",flags));
 			}
 		}
+	}
+	// Accumulate the array of fields to be searched or excluded from the search
+	var fields = [];
+	if(options.field) {
+		if($tw.utils.isArray(options.field)) {
+			$tw.utils.each(options.field,function(fieldName) {
+				if(fieldName) {
+					fields.push(fieldName);					
+				}
+			});
+		} else {
+			fields.push(options.field);
+		}
+	}
+	// Use default fields if none specified and we're not excluding fields (excluding fields with an empty field array is the same as searching all fields)
+	if(fields.length === 0 && !options.excludeField) {
+		fields.push("title");
+		fields.push("tags");
+		fields.push("text");
 	}
 	// Function to check a given tiddler for the search term
 	var searchTiddler = function(title) {
 		if(!searchTermsRegExps) {
 			return true;
 		}
+		var notYetFound = searchTermsRegExps.slice();
+
 		var tiddler = self.getTiddler(title);
 		if(!tiddler) {
 			tiddler = new $tw.Tiddler({title: title, text: "", type: "text/vnd.tiddlywiki"});
 		}
 		var contentTypeInfo = $tw.config.contentTypeInfo[tiddler.fields.type] || $tw.config.contentTypeInfo["text/vnd.tiddlywiki"],
-			match;
-		for(var t=0; t<searchTermsRegExps.length; t++) {
-			match = false;
-			if(options.field) {
-				match = searchTermsRegExps[t].test(tiddler.getFieldString(options.field));
-			} else {
-				// Search title, tags and body
-				if(contentTypeInfo.encoding === "utf8") {
-					match = match || searchTermsRegExps[t].test(tiddler.fields.text);
+			searchFields;
+		// Get the list of fields we're searching
+		if(options.excludeField) {
+			searchFields = Object.keys(tiddler.fields);
+			$tw.utils.each(fields,function(fieldName) {
+				var p = searchFields.indexOf(fieldName);
+				if(p !== -1) {
+					searchFields.splice(p,1);
 				}
-				var tags = tiddler.fields.tags ? tiddler.fields.tags.join("\0") : "";
-				match = match || searchTermsRegExps[t].test(tags) || searchTermsRegExps[t].test(tiddler.fields.title);
-			}
-			if(!match) {
-				return false;
-			}
+			});
+		} else {
+			searchFields = fields;
 		}
-		return true;
+		for(var fieldIndex=0; notYetFound.length>0 && fieldIndex<searchFields.length; fieldIndex++) {
+			// Don't search the text field if the content type is binary
+			var fieldName = searchFields[fieldIndex];
+			if(fieldName === "text" && contentTypeInfo.encoding !== "utf8") {
+				break;
+			}
+			var str = tiddler.fields[fieldName],
+				t;
+			if(str) {
+				if($tw.utils.isArray(str)) {
+					// If the field value is an array, test each regexp against each field array entry and fail if each regexp doesn't match at least one field array entry
+					for(var s=0; s<str.length; s++) {
+						for(t=0; t<notYetFound.length;) {
+							if(notYetFound[t].test(str[s])) {
+								notYetFound.splice(t, 1);
+							} else {
+								t++;
+							}
+						}
+					}
+				} else {
+					// If the field isn't an array, force it to a string and test each regexp against it and fail if any do not match
+					str = tiddler.getFieldString(fieldName);
+					for(t=0; t<notYetFound.length;) {
+						if(notYetFound[t].test(str)) {
+							notYetFound.splice(t, 1);
+						} else {
+							t++;
+						}
+					}
+				}
+			}
+		};
+		return notYetFound.length == 0;
 	};
 	// Loop through all the tiddlers doing the search
 	var results = [],
@@ -1107,18 +1244,42 @@ exports.getTiddlerText = function(title,defaultText) {
 };
 
 /*
+Check whether the text of a tiddler matches a given value. By default, the comparison is case insensitive, and any spaces at either end of the tiddler text is trimmed
+*/
+exports.checkTiddlerText = function(title,targetText,options) {
+	options = options || {};
+	var text = this.getTiddlerText(title,"");
+	if(!options.noTrim) {
+		text = text.trim();
+	}
+	if(!options.caseSensitive) {
+		text = text.toLowerCase();
+		targetText = targetText.toLowerCase();
+	}
+	return text === targetText;
+}
+
+/*
 Read an array of browser File objects, invoking callback(tiddlerFieldsArray) once they're all read
 */
-exports.readFiles = function(files,callback) {
+exports.readFiles = function(files,options) {
+	var callback;
+	if(typeof options === "function") {
+		callback = options;
+		options = {};
+	} else {
+		callback = options.callback;
+	}
 	var result = [],
-		outstanding = files.length;
-	for(var f=0; f<files.length; f++) {
-		this.readFile(files[f],function(tiddlerFieldsArray) {
+		outstanding = files.length,
+		readFileCallback = function(tiddlerFieldsArray) {
 			result.push.apply(result,tiddlerFieldsArray);
 			if(--outstanding === 0) {
 				callback(result);
 			}
-		});
+		};
+	for(var f=0; f<files.length; f++) {
+		this.readFile(files[f],$tw.utils.extend({},options,{callback: readFileCallback}));
 	}
 	return files.length;
 };
@@ -1126,7 +1287,14 @@ exports.readFiles = function(files,callback) {
 /*
 Read a browser File object, invoking callback(tiddlerFieldsArray) with an array of tiddler fields objects
 */
-exports.readFile = function(file,callback) {
+exports.readFile = function(file,options) {
+	var callback;
+	if(typeof options === "function") {
+		callback = options;
+		options = {};
+	} else {
+		callback = options.callback;
+	}
 	// Get the type, falling back to the filename extension
 	var self = this,
 		type = file.type;
@@ -1146,6 +1314,22 @@ exports.readFile = function(file,callback) {
 	if($tw.log.IMPORT) {
 		console.log("Importing file '" + file.name + "', type: '" + type + "', isBinary: " + isBinary);
 	}
+	// Give the hook a chance to process the drag
+	if($tw.hooks.invokeHook("th-importing-file",{
+		file: file,
+		type: type,
+		isBinary: isBinary,
+		callback: callback
+	}) !== true) {
+		this.readFileContent(file,type,isBinary,options.deserializer,callback);
+	}
+};
+
+/*
+Lower level utility to read the content of a browser File object, invoking callback(tiddlerFieldsArray) with an array of tiddler fields objects
+*/
+exports.readFileContent = function(file,type,isBinary,deserializer,callback) {
+	var self = this;
 	// Create the FileReader
 	var reader = new FileReader();
 	// Onload
@@ -1167,7 +1351,7 @@ exports.readFile = function(file,callback) {
 			});
 		} else {
 			// Otherwise, just try to deserialise any tiddlers in the file
-			callback(self.deserializeTiddlers(type,text,tiddlerFields));
+			callback(self.deserializeTiddlers(type,text,tiddlerFields,{deserializer: deserializer}));
 		}
 	};
 	// Kick off the read
@@ -1214,8 +1398,39 @@ fromPageRect: page coordinates of the origin of the navigation
 historyTitle: title of history tiddler (defaults to $:/HistoryList)
 */
 exports.addToHistory = function(title,fromPageRect,historyTitle) {
-	var story = new $tw.Story({wiki: this, historyTitle: historyTitle});
-	story.addToHistory(title,fromPageRect);
+	if(historyTitle) {
+		var story = new $tw.Story({wiki: this, historyTitle: historyTitle});
+		story.addToHistory(title,fromPageRect);		
+	}
+};
+
+/*
+Add a new tiddler to the story river
+title: a title string or an array of title strings
+fromTitle: the title of the tiddler from which the navigation originated
+storyTitle: title of story tiddler (defaults to $:/StoryList)
+options: see story.js
+*/
+exports.addToStory = function(title,fromTitle,storyTitle,options) {
+	if(storyTitle) {
+		var story = new $tw.Story({wiki: this, storyTitle: storyTitle});
+		story.addToStory(title,fromTitle,options);		
+	}
+};
+
+/*
+Generate a title for the draft of a given tiddler
+*/
+exports.generateDraftTitle = function(title) {
+	var c = 0,
+		draftTitle,
+		username = this.getTiddlerText("$:/status/UserName"),
+		attribution = username ? " by " + username : "";
+	do {
+		draftTitle = "Draft " + (c ? (c + 1) + " " : "") + "of '" + title + "'" + attribution;
+		c++;
+	} while(this.tiddlerExists(draftTitle));
+	return draftTitle;
 };
 
 /*
@@ -1243,6 +1458,26 @@ exports.invokeUpgraders = function(titles,tiddlers) {
 		$tw.utils.extend(messages,upgraderMessages);
 	}
 	return messages;
+};
+
+// Determine whether a plugin by title is dynamically loadable
+exports.doesPluginRequireReload = function(title) {
+	return this.doesPluginInfoRequireReload(this.getPluginInfo(title) || this.getTiddlerDataCached(title));
+};
+
+// Determine whether a plugin info structure is dynamically loadable
+exports.doesPluginInfoRequireReload = function(pluginInfo) {
+	if(pluginInfo) {
+		var foundModule = false;
+		$tw.utils.each(pluginInfo.tiddlers,function(tiddler) {
+			if(tiddler.type === "application/javascript" && $tw.utils.hop(tiddler,"module-type")) {
+				foundModule = true;
+			}
+		});
+		return foundModule;
+	} else {
+		return null;
+	}
 };
 
 })();
