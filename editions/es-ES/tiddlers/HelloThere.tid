@@ -20,16 +20,16 @@ BIenvenido a TiddlyWiki, un bloc de notas [[no lineal|Philosophy of Tiddlers]] �
 Al revés que los servicios online convencionales, TiddlyWiki te deja escoger dónde quieres guardar tus datos, garantizándote que, por más que pase el tiempo, podrás seguir usando en el futuro las notas que tomes hoy.
 
 <div style="font-size:0.7em;text-align:center;margin-top:3em;margin-bottom:3em;">
-<a href="http://groups.google.com/group/TiddlyWiki" class="tc-btn-big-green" style="background-color:#FF8C19;" target="_blank" rel="noopener noreferrer">
-{{$:/core/images/mail}} ~TiddlyWiki en Google Groups
+<a href="https://talk.tiddlywiki.org/" class="tc-btn-big-green" style="background-color:#FF8C19;" target="_blank" rel="noopener noreferrer">
+{{$:/core/images/mail}} Foro oficial de ~TiddlyWiki
 </a>
-<a href="http://www.youtube.com/c/JeremyRuston" class="tc-btn-big-green" style="background-color:#e52d27;" target="_blank" rel="noopener noreferrer">
+<a href="https://www.youtube.com/c/JeremyRuston" class="tc-btn-big-green" style="background-color:#e52d27;" target="_blank" rel="noopener noreferrer">
 {{$:/core/images/video}} ~TiddlyWiki en ~YouTube
 </a>
 <a href="https://twitter.com/TiddlyWiki" class="tc-btn-big-green" style="background-color:#5E9FCA;" target="_blank" rel="noopener noreferrer">
 {{$:/core/images/twitter}} @~TiddlyWiki en Twitter
 </a>
-<a href="https://github.com/Jermolene/TiddlyWiki5" class="tc-btn-big-green" style="background-color:#444;" target="_blank" rel="noopener noreferrer">
+<a href="https://github.com/TiddlyWiki/TiddlyWiki5" class="tc-btn-big-green" style="background-color:#444;" target="_blank" rel="noopener noreferrer">
 {{$:/core/images/github}} ~TiddlyWiki en ~GitHub
 </a>
 </div>

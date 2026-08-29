@@ -6,10 +6,7 @@ module-type: global
 A barebones implementation of DOM interfaces needed by the rendering mechanism.
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 // Sequence number used to enable us to track objects for testing
@@ -21,14 +18,33 @@ var bumpSequenceNumber = function(object) {
 	}
 };
 
+var TW_Node = function (){
+	throw TypeError("Illegal constructor");
+};
+
+Object.defineProperty(TW_Node.prototype, "ELEMENT_NODE", {
+	get: function() {
+		return 1;
+	}
+});
+
+Object.defineProperty(TW_Node.prototype, "TEXT_NODE", {
+	get: function() {
+		return 3;
+	}
+});
+
 var TW_TextNode = function(text) {
 	bumpSequenceNumber(this);
 	this.textContent = text + "";
+	this.children = [];
 };
+
+Object.setPrototypeOf(TW_TextNode.prototype,TW_Node.prototype);
 
 Object.defineProperty(TW_TextNode.prototype, "nodeType", {
 	get: function() {
-		return 3;
+		return this.TEXT_NODE;
 	}
 });
 
@@ -38,20 +54,78 @@ Object.defineProperty(TW_TextNode.prototype, "formattedTextContent", {
 	}
 });
 
-var TW_Element = function(tag,namespace) {
+var TW_Style = function(el) {
+	// Define the internal style object
+	var styleObject = {
+		// Method to get the entire style object
+		get: function() {
+			return el._style;
+		},
+		// Method to set styles using a string (e.g. "color:red; background-color:blue;")
+		set: function(str) {
+			str = str || "";
+			$tw.utils.each(str.split(";"),function(declaration) {
+				var parts = declaration.split(":"),
+					name = $tw.utils.trim(parts[0]),
+					value = $tw.utils.trim(parts[1]);
+				if(name && value) {
+					el._style[$tw.utils.convertStyleNameToPropertyName(name)] = value;
+				}
+			});
+		},
+		// Method to set a specific property without transforming the property name, such as a custom property
+		setProperty: function(name, value) {
+			el._style[name] = value;
+		}
+	};
+
+	// Return a Proxy to handle direct access to individual style properties
+	return new Proxy(styleObject, {
+		get: function(target, property) {
+			// Real CSSStyleDeclaration returns undefined for non-string keys.
+			// Guards against crashes when consumers probe Symbol.toPrimitive etc.
+			if(typeof property !== "string") {
+				return undefined;
+			}
+			// If the property exists on styleObject, return it (get, set, setProperty methods)
+			if(property in target) {
+				return target[property];
+			}
+			// Otherwise, return the corresponding property from _style
+			return el._style[$tw.utils.convertStyleNameToPropertyName(property)] || "";
+		},
+		set: function(target, property, value) {
+			// Mirror the get trap: ignore non-string keys instead of crashing.
+			if(typeof property !== "string") {
+				return true;
+			}
+			// Set the property in _style
+			el._style[$tw.utils.convertStyleNameToPropertyName(property)] = value;
+			return true;
+		}
+	});
+};
+
+var TW_Element = function(tag, namespace) {
 	bumpSequenceNumber(this);
 	this.isTiddlyWikiFakeDom = true;
 	this.tag = tag;
 	this.attributes = {};
 	this.isRaw = false;
 	this.children = [];
-	this.style = {};
-	this.namespaceURI = namespace || "http://www.w3.org/1999/xhtml";
+	this._style = {}; // Internal style object
+	this.style = new TW_Style(this); // Proxy for style management
+	// createElementNS with empty-string or null normalises to null (no namespace) per spec.
+	// https://dom.spec.whatwg.org/#dom-document-createelementns
+	this.namespaceURI = namespace !== undefined ? (namespace || null) : "http://www.w3.org/1999/xhtml";
 };
+
+
+Object.setPrototypeOf(TW_Element.prototype,TW_Node.prototype);
 
 Object.defineProperty(TW_Element.prototype, "nodeType", {
 	get: function() {
-		return 1;
+		return this.ELEMENT_NODE;
 	}
 });
 
@@ -66,7 +140,11 @@ TW_Element.prototype.setAttribute = function(name,value) {
 	if(this.isRaw) {
 		throw "Cannot setAttribute on a raw TW_Element";
 	}
-	this.attributes[name] = value + "";
+	if(name === "style") {
+		this.style.set(value);
+	} else {
+		this.attributes[name] = value + "";
+	}
 };
 
 TW_Element.prototype.setAttributeNS = function(namespace,name,value) {
@@ -130,7 +208,16 @@ TW_Element.prototype.addEventListener = function(type,listener,useCapture) {
 
 Object.defineProperty(TW_Element.prototype, "tagName", {
 	get: function() {
-		return this.tag || "";
+		if(!this.tag) {
+			return "";
+		}
+		// HTML elements report uppercase tagName per DOM spec. Other namespaces
+		// preserve case. Fakedom only models HTML documents.
+		// https://dom.spec.whatwg.org/#dom-element-tagname
+		if(this.namespaceURI === "http://www.w3.org/1999/xhtml") {
+			return this.tag.toUpperCase();
+		}
+		return this.tag;
 	}
 });
 
@@ -169,13 +256,13 @@ Object.defineProperty(TW_Element.prototype, "outerHTML", {
 				}
 			}
 		}
-		if(this.style) {
+		if(this._style) {
 			var style = [];
-			for(var s in this.style) {
-				style.push(s + ":" + this.style[s] + ";");
+			for(var s in this._style) {
+				style.push($tw.utils.convertPropertyNameToStyleName(s) + ":" + this._style[s] + ";");
 			}
 			if(style.length > 0) {
-				output.push(" style=\"",style.join(""),"\"")
+				output.push(" style=\"",style.join(""),"\"");
 			}
 		}
 		output.push(">");
@@ -197,7 +284,7 @@ Object.defineProperty(TW_Element.prototype, "innerHTML", {
 				if(node instanceof TW_Element) {
 					b.push(node.outerHTML);
 				} else if(node instanceof TW_TextNode) {
-					b.push($tw.utils.htmlEncode(node.textContent));
+					b.push($tw.utils.htmlTextEncode(node.textContent));
 				}
 			});
 			return b.join("");
@@ -206,13 +293,28 @@ Object.defineProperty(TW_Element.prototype, "innerHTML", {
 	set: function(value) {
 		this.isRaw = true;
 		this.rawHTML = value;
+		this.rawTextContent = null;
+	}
+});
+
+Object.defineProperty(TW_Element.prototype, "textInnerHTML", {
+	set: function(value) {
+		if(this.isRaw) {
+			this.rawTextContent = value;
+		} else {
+			throw "Cannot set textInnerHTML of a non-raw TW_Element";
+		}
 	}
 });
 
 Object.defineProperty(TW_Element.prototype, "textContent", {
 	get: function() {
 		if(this.isRaw) {
-			throw "Cannot get textContent on a raw TW_Element";
+			if(this.rawTextContent === null) {
+				return "";
+			} else {
+				return this.rawTextContent;
+			}
 		} else {
 			var b = [];
 			$tw.utils.each(this.children,function(node) {
@@ -229,7 +331,7 @@ Object.defineProperty(TW_Element.prototype, "textContent", {
 Object.defineProperty(TW_Element.prototype, "formattedTextContent", {
 	get: function() {
 		if(this.isRaw) {
-			throw "Cannot get formattedTextContent on a raw TW_Element";
+			return "";
 		} else {
 			var b = [],
 				isBlock = $tw.config.htmlBlockElements.indexOf(this.tag) !== -1;
@@ -268,5 +370,3 @@ var document = {
 };
 
 exports.fakeDocument = document;
-
-})();

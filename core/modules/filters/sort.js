@@ -6,10 +6,7 @@ module-type: filteroperator
 Filter operator for sorting
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
@@ -24,6 +21,12 @@ exports.sort = function(source,operator,options) {
 exports.nsort = function(source,operator,options) {
 	var results = prepare_results(source);
 	options.wiki.sortTiddlers(results,operator.operand || "title",operator.prefix === "!",false,true);
+	return results;
+};
+
+exports.sortan = function(source, operator, options) {
+	var results = prepare_results(source);
+	options.wiki.sortTiddlers(results, operator.operand || "title", operator.prefix === "!",false,false,true);
 	return results;
 };
 
@@ -46,5 +49,3 @@ var prepare_results = function (source) {
 	});
 	return results;
 };
-
-})();

@@ -29,6 +29,8 @@ external-link-foreground-hover: External link foreground hover
 external-link-foreground-visited: External link foreground visited
 external-link-foreground: External link foreground
 foreground: General foreground
+menubar-background: Menu bar background
+menubar-foreground: Menu bar foreground
 message-background: Message box background
 message-border: Message box border
 message-foreground: Message box foreground
@@ -45,6 +47,8 @@ page-background: Page background
 pre-background: Preformatted code background
 pre-border: Preformatted code border
 primary: General primary
+select-tag-background: `<select>` element background
+select-tag-foreground: `<select>` element text
 sidebar-button-foreground: Sidebar button foreground
 sidebar-controls-foreground-hover: Sidebar controls foreground hover
 sidebar-controls-foreground: Sidebar controls foreground
@@ -61,6 +65,13 @@ sidebar-tab-foreground-selected: Sidebar tab foreground for selected tabs
 sidebar-tab-foreground: Sidebar tab foreground
 sidebar-tiddler-link-foreground-hover: Sidebar tiddler link foreground hover
 sidebar-tiddler-link-foreground: Sidebar tiddler link foreground
+stability-stable: Badge for stability level "stable"
+stability-experimental: Badge for stability level "experimental"
+stability-deprecated: Badge for stability level "deprecated"
+stability-legacy: Badge for stability level "legacy"
+testcase-accent-level-1: Test case accent colour with no nesting
+testcase-accent-level-2: Test case accent colour with 2nd level nesting
+testcase-accent-level-3: Test case accent colour with 3rd level nesting or higher
 site-title-foreground: Site title foreground
 static-alert-foreground: Static alert foreground
 tab-background-selected: Tab background for selected tabs

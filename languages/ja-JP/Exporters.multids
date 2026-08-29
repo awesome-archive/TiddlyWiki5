@@ -1,3 +1,6 @@
 title: $:/language/Exporters/
 
-StaticRiver: 静的HTMLファイルとして構成される一連のtiddler
+CsvFile: CSVファイル
+JsonFile: JSONファイル
+StaticRiver: 静的HTML
+TidFile: TIDテキストファイル

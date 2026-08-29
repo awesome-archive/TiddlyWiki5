@@ -6,10 +6,7 @@ module-type: global
 Manages switching plugins for themes and languages.
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
@@ -52,18 +49,19 @@ PluginSwitcher.prototype.switchPlugins = function() {
 			var tiddler = self.wiki.getTiddler(title);
 			if(tiddler && tiddler.isPlugin() && plugins.indexOf(title) === -1) {
 				plugins.push(title);
-				var pluginInfo = JSON.parse(self.wiki.getTiddlerText(title)),
-					dependents = $tw.utils.parseStringArray(tiddler.fields.dependents || "");
+				var dependents = $tw.utils.parseStringArray(tiddler.fields.dependents || "");
 				$tw.utils.each(dependents,function(title) {
 					accumulatePlugin(title);
 				});
 			}
 		};
 	accumulatePlugin(selectedPluginTitle);
+	// Read the plugin info for the incoming plugins
+	$tw.wiki.readPluginInfo(plugins);
 	// Unregister any existing theme tiddlers
-	var unregisteredTiddlers = $tw.wiki.unregisterPluginTiddlers(this.pluginType);
+	$tw.wiki.unregisterPluginTiddlers(this.pluginType);
 	// Register any new theme tiddlers
-	var registeredTiddlers = $tw.wiki.registerPluginTiddlers(this.pluginType,plugins);
+	$tw.wiki.registerPluginTiddlers(this.pluginType,plugins);
 	// Unpack the current theme tiddlers
 	$tw.wiki.unpackPluginTiddlers();
 	// Call the switch handler
@@ -73,5 +71,3 @@ PluginSwitcher.prototype.switchPlugins = function() {
 };
 
 exports.PluginSwitcher = PluginSwitcher;
-
-})();

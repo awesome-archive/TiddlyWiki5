@@ -6,10 +6,7 @@ module-type: widget
 Edit widget is a meta-widget chooses the appropriate actual editting widget
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
@@ -43,21 +40,12 @@ EditWidget.prototype.execute = function() {
 	// Get our parameters
 	this.editTitle = this.getAttribute("tiddler",this.getVariable("currentTiddler"));
 	this.editField = this.getAttribute("field","text");
-	this.editIndex = this.getAttribute("index");
-	this.editClass = this.getAttribute("class");
-	this.editPlaceholder = this.getAttribute("placeholder");
 	// Choose the appropriate edit widget
 	this.editorType = this.getEditorType();
 	// Make the child widgets
 	this.makeChildWidgets([{
 		type: "edit-" + this.editorType,
-		attributes: {
-			tiddler: {type: "string", value: this.editTitle},
-			field: {type: "string", value: this.editField},
-			index: {type: "string", value: this.editIndex},
-			"class": {type: "string", value: this.editClass},
-			"placeholder": {type: "string", value: this.editPlaceholder}
-		},
+		attributes: this.parseTreeNode.attributes,
 		children: this.parseTreeNode.children
 	}]);
 };
@@ -89,15 +77,13 @@ Selectively refreshes the widget if needed. Returns true if the widget or any of
 */
 EditWidget.prototype.refresh = function(changedTiddlers) {
 	var changedAttributes = this.computeAttributes();
-	// Refresh if an attribute has changed, or the type associated with the target tiddler has changed
-	if(changedAttributes.tiddler || changedAttributes.field || changedAttributes.index || (changedTiddlers[this.editTitle] && this.getEditorType() !== this.editorType)) {
+	// Refresh if the editor type has changed
+	if(changedAttributes.tiddler || changedAttributes.field || (this.getEditorType() !== this.editorType)) {
 		this.refreshSelf();
 		return true;
 	} else {
-		return this.refreshChildren(changedTiddlers);		
+		return this.refreshChildren(changedTiddlers);
 	}
 };
 
 exports.edit = EditWidget;
-
-})();

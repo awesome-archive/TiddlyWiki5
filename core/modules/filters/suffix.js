@@ -6,31 +6,34 @@ module-type: filteroperator
 Filter operator for checking if a title ends with a suffix
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
 Export our filter function
 */
 exports.suffix = function(source,operator,options) {
-	var results = [];
-	if(operator.prefix === "!") {
-		source(function(tiddler,title) {
-			if(title.substr(-operator.operand.length) !== operator.operand) {
-				results.push(title);
-			}
+	const results = [],
+		suffixes = (operator.suffixes || [])[0] || [];
+
+	if(!operator.operand) {
+		source((tiddler,title) => {
+			results.push(title);
 		});
-	} else {
-		source(function(tiddler,title) {
-			if(title.substr(-operator.operand.length) === operator.operand) {
-				results.push(title);
-			}
-		});
+		return results;
 	}
+
+	const caseInsensitive = suffixes.indexOf("caseinsensitive") !== -1,
+		negate = operator.prefix === "!",
+		operand = caseInsensitive ? operator.operand.toLowerCase() : operator.operand;
+
+	source((tiddler,title) => {
+		const value = caseInsensitive ? title.toLowerCase() : title,
+			matches = value.endsWith(operand);
+		if(negate ? !matches : matches) {
+			results.push(title);
+		}
+	});
+
 	return results;
 };
-
-})();

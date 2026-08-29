@@ -29,6 +29,8 @@ external-link-foreground-hover: 懸停外部鏈結前景
 external-link-foreground-visited: 已造訪過的外部鏈結前景
 external-link-foreground: 外部鏈結前景
 foreground: 一般前景
+menubar-background: 選單列背景
+menubar-foreground: 選單列前景
 message-background: 訊息框背景
 message-border: 訊息邊框
 message-foreground: 訊息框前景
@@ -45,6 +47,8 @@ page-background: 頁面背景
 pre-background: pre 背景
 pre-border: pre 邊框
 primary: 主顏色
+select-tag-background: `<select>` 元素背景
+select-tag-foreground: `<select>` 元素文字
 sidebar-button-foreground: 側邊欄按鈕前景
 sidebar-controls-foreground-hover: 懸停側邊欄控制項前景
 sidebar-controls-foreground: 側邊欄控制項前景
@@ -61,6 +65,13 @@ sidebar-tab-foreground-selected: 側邊欄選定頁籤前景
 sidebar-tab-foreground: 側邊欄頁籤前景
 sidebar-tiddler-link-foreground-hover: 側邊欄懸停條目鏈結前景
 sidebar-tiddler-link-foreground: 側邊欄條目鏈結前景
+stability-stable: 穩定性等級 "stable" 的徽章
+stability-experimental: 穩定性等級 "experimental" 的徽章
+stability-deprecated: 穩定性等級 "deprecated" 的徽章
+stability-legacy: 穩定性等級 "legacy" 的徽章
+testcase-accent-level-1: 無嵌套的測試案例強調色
+testcase-accent-level-2: 第二級嵌套的測試案例強調色
+testcase-accent-level-3: 第三級或更高級別嵌套的測試案例強調色
 site-title-foreground: 網站標題前景
 static-alert-foreground: 靜態警示前景
 tab-background-selected: 選定的頁籤背景

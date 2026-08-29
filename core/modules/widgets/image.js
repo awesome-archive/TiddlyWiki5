@@ -22,10 +22,7 @@ Tiddlers that contain wikitext could be rendered to a DIV of the usual size of a
 The width and height attributes are interpreted as a number of pixels, and do not need to include the "px" suffix.
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
@@ -48,7 +45,7 @@ ImageWidget.prototype.render = function(parent,nextSibling) {
 	this.execute();
 	// Create element
 	// Determine what type of image it is
-	var tag = "img", src = "",
+	var tag = "img", src = "", self = this,
 		tiddler = this.wiki.getTiddler(this.imageSource);
 	if(!tiddler) {
 		// The source isn't the title of a tiddler, so we'll assume it's a URL
@@ -58,24 +55,25 @@ ImageWidget.prototype.render = function(parent,nextSibling) {
 		if(this.wiki.isImageTiddler(this.imageSource)) {
 			var type = tiddler.fields.type,
 				text = tiddler.fields.text,
-				_canonical_uri = tiddler.fields._canonical_uri;
+				_canonical_uri = tiddler.fields._canonical_uri,
+				typeInfo = $tw.config.contentTypeInfo[type] || {},
+				deserializerType = typeInfo.deserializerType || type;
 			// If the tiddler has body text then it doesn't need to be lazily loaded
 			if(text) {
-				// Render the appropriate element for the image type
-				switch(type) {
-					case "application/pdf":
+				// Render the appropriate element for the image type by looking up the encoding in the content type info
+				var encoding = typeInfo.encoding || "utf8";
+				if(encoding === "base64") {
+					// .pdf .png .jpg etc.
+					src = "data:" + deserializerType + ";base64," + text;
+					if(deserializerType === "application/pdf") {
 						tag = "embed";
-						src = "data:application/pdf;base64," + text;
-						break;
-					case "image/svg+xml":
-						src = "data:image/svg+xml," + encodeURIComponent(text);
-						break;
-					default:
-						src = "data:" + type + ";base64," + text;
-						break;
+					}
+				} else {
+					// .svg .tid .xml etc.
+					src = "data:" + deserializerType + "," + encodeURIComponent(text);
 				}
 			} else if(_canonical_uri) {
-				switch(type) {
+				switch(deserializerType) {
 					case "application/pdf":
 						tag = "embed";
 						src = _canonical_uri;
@@ -86,7 +84,7 @@ ImageWidget.prototype.render = function(parent,nextSibling) {
 					default:
 						src = _canonical_uri;
 						break;
-				}	
+				}
 			} else {
 				// Just trigger loading of the tiddler
 				this.wiki.getTiddlerText(this.imageSource);
@@ -97,7 +95,10 @@ ImageWidget.prototype.render = function(parent,nextSibling) {
 	var domNode = this.document.createElement(tag);
 	domNode.setAttribute("src",src);
 	if(this.imageClass) {
-		domNode.setAttribute("class",this.imageClass);		
+		domNode.setAttribute("class",this.imageClass);
+	}
+	if(this.imageUsemap) {
+		domNode.setAttribute("usemap",this.imageUsemap);
 	}
 	if(this.imageWidth) {
 		domNode.setAttribute("width",this.imageWidth);
@@ -106,11 +107,34 @@ ImageWidget.prototype.render = function(parent,nextSibling) {
 		domNode.setAttribute("height",this.imageHeight);
 	}
 	if(this.imageTooltip) {
-		domNode.setAttribute("title",this.imageTooltip);		
+		domNode.setAttribute("title",this.imageTooltip);
 	}
 	if(this.imageAlt) {
-		domNode.setAttribute("alt",this.imageAlt);		
+		domNode.setAttribute("alt",this.imageAlt);
 	}
+	if(this.lazyLoading && tag === "img") {
+		domNode.setAttribute("loading",this.lazyLoading);
+	}
+	this.assignAttributes(domNode,{
+		sourcePrefix: "data-",
+		destPrefix: "data-"
+	});
+	// Add classes when the image loads or fails
+	$tw.utils.addClass(domNode,"tc-image-loading");
+	domNode.addEventListener("load",function(event) {
+		$tw.utils.removeClass(domNode,"tc-image-loading");
+		$tw.utils.addClass(domNode,"tc-image-loaded");
+		if(self.loadedActions) {
+			var variables = $tw.utils.collectDOMVariables(domNode,null,event);
+			variables["img-natural-width"] = domNode.naturalWidth.toString();
+			variables["img-natural-height"] = domNode.naturalHeight.toString();
+			self.invokeActionString(self.loadedActions,self,event,variables);		
+		}
+	},false);
+	domNode.addEventListener("error",function() {
+		$tw.utils.removeClass(domNode,"tc-image-loading");
+		$tw.utils.addClass(domNode,"tc-image-error");
+	},false);
 	// Insert element
 	parent.insertBefore(domNode,nextSibling);
 	this.domNodes.push(domNode);
@@ -125,23 +149,37 @@ ImageWidget.prototype.execute = function() {
 	this.imageWidth = this.getAttribute("width");
 	this.imageHeight = this.getAttribute("height");
 	this.imageClass = this.getAttribute("class");
+	this.imageUsemap = this.getAttribute("usemap");
 	this.imageTooltip = this.getAttribute("tooltip");
 	this.imageAlt = this.getAttribute("alt");
+	this.lazyLoading = this.getAttribute("loading");
+	this.loadedActions = this.getAttribute("loadActions");
 };
 
 /*
 Selectively refreshes the widget if needed. Returns true if the widget or any of its children needed re-rendering
 */
 ImageWidget.prototype.refresh = function(changedTiddlers) {
-	var changedAttributes = this.computeAttributes();
-	if(changedAttributes.source || changedAttributes.width || changedAttributes.height || changedAttributes["class"] || changedAttributes.tooltip || changedTiddlers[this.imageSource]) {
+	var changedAttributes = this.computeAttributes(),
+		hasChangedAttributes = $tw.utils.count(changedAttributes) > 0;
+	if(changedAttributes.source || changedAttributes["class"] || changedAttributes.usemap || changedAttributes.tooltip || changedTiddlers[this.imageSource] ||changedAttributes.loadActions) {
 		this.refreshSelf();
 		return true;
-	} else {
-		return false;		
+	} else if(hasChangedAttributes) {
+		this.assignAttributes(this.domNodes[0],{
+			sourcePrefix: "data-",
+			destPrefix: "data-"
+		});
+		if(changedAttributes.width) {
+			this.domNodes[0].setAttribute("width",this.getAttribute("width"));
+		}
+		if(changedAttributes.height) {
+			this.domNodes[0].setAttribute("height",this.getAttribute("height"));
+		}
+	}
+	else {
+		return false;
 	}
 };
 
 exports.image = ImageWidget;
-
-})();

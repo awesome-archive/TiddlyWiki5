@@ -6,10 +6,7 @@ module-type: widget
 Wrapper for `railroad-diagrams.js` that provides a `<$railroad>` widget.
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Parser = require("$:/plugins/tiddlywiki/railroad/parser.js").parser,
@@ -40,7 +37,7 @@ RailroadWidget.prototype.render = function(parent,nextSibling) {
 	var div = this.document.createElement("div");
 	try {
 		// Initialise options from the config tiddler or widget attributes
-		var config = $tw.wiki.getTiddlerData(RAILROAD_OPTIONS,{});
+		var config = this.wiki.getTiddlerData(RAILROAD_OPTIONS,{});
 		var options = {
 			arrow: this.getAttribute("arrow", config.arrow || "yes") === "yes",
 			debug: this.getAttribute("debug", config.debug || "no") === "yes",
@@ -104,7 +101,7 @@ RailroadWidget.prototype.patchLinks = function(node) {
 							child.onclick = function(event) {
 								self.dispatchLink(myTarget,event);
 								return false;
-							}
+							};
 						})(target);
 						target = "#" + target;
 					}
@@ -143,5 +140,3 @@ RailroadWidget.prototype.dispatchLink = function(to,event) {
 };
 
 exports.railroad = RailroadWidget;
-
-})();

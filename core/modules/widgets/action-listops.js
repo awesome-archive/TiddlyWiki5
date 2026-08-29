@@ -6,10 +6,6 @@ module-type: widget
 Action widget to apply list operations to any tiddler field (defaults to the 'list' field of the current tiddler)
 
 \*/
-(function() {
-
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
 var ActionListopsWidget = function(parseTreeNode, options) {
@@ -44,9 +40,7 @@ ActionListopsWidget.prototype.execute = function() {
  */
 ActionListopsWidget.prototype.refresh = function(changedTiddlers) {
 	var changedAttributes = this.computeAttributes();
-	if(changedAttributes.$tiddler || changedAttributes.$filter ||
-		changedAttributes.$subfilter || changedAttributes.$field ||
-		changedAttributes.$index || changedAttributes.$tags) {
+	if($tw.utils.count(changedAttributes) > 0) {
 		this.refreshSelf();
 		return true;
 	}
@@ -59,34 +53,31 @@ ActionListopsWidget.prototype.invokeAction = function(triggeringWidget,
 	event) {
 	//Apply the specified filters to the lists
 	var field = this.listField,
-		index,
-		type = "!!",
-		list = this.listField;
+		index;
 	if(this.listIndex) {
 		field = undefined;
 		index = this.listIndex;
-		type = "##";
-		list = this.listIndex;
 	}
 	if(this.filter) {
 		this.wiki.setText(this.target, field, index, $tw.utils.stringifyList(
 			this.wiki
-			.filterTiddlers(this.filter, this)));
+				.filterTiddlers(this.filter, this)));
 	}
 	if(this.subfilter) {
-		var subfilter = "[list[" + this.target + type + list + "]] " + this.subfilter;
-		this.wiki.setText(this.target, field, index, $tw.utils.stringifyList(
-			this.wiki
-			.filterTiddlers(subfilter, this)));
+		var inputList = this.wiki.getTiddlerList(this.target,field,index),
+			subfilter = "[all[]] " + this.subfilter;
+		this.wiki.setText(this.target, field, index, $tw.utils.stringifyList(this.wiki.filterTiddlers(subfilter,this,this.wiki.makeTiddlerIterator(inputList))));
 	}
 	if(this.filtertags) {
-		var tagfilter = "[list[" + this.target + "!!tags]] " + this.filtertags;
-		this.wiki.setText(this.target, "tags", undefined, $tw.utils.stringifyList(
-			this.wiki.filterTiddlers(tagfilter, this)));
+		var tiddler = this.wiki.getTiddler(this.target),
+			oldtags = tiddler ? (tiddler.fields.tags || []).slice(0) : [],
+			tagfilter = $tw.utils.stringifyList(oldtags) + " " + this.filtertags,
+			newtags = this.wiki.filterTiddlers(tagfilter,this);
+		if($tw.utils.stringifyList(oldtags.sort()) !== $tw.utils.stringifyList(newtags.sort())) {
+			this.wiki.setText(this.target,"tags",undefined,$tw.utils.stringifyList(newtags));
+		}
 	}
 	return true; // Action was invoked
 };
 
 exports["action-listops"] = ActionListopsWidget;
-
-})();

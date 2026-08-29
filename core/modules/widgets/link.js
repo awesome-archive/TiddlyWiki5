@@ -6,14 +6,10 @@ module-type: widget
 Link widget
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
-var MISSING_LINK_CONFIG_TITLE = "$:/config/MissingLinks";
 
 var LinkWidget = function(parseTreeNode,options) {
 	this.initialise(parseTreeNode,options);
@@ -44,9 +40,18 @@ LinkWidget.prototype.render = function(parent,nextSibling) {
 	} else {
 		// Just insert the link text
 		var domNode = this.document.createElement("span");
+		// Assign data- attributes
+		this.assignAttributes(domNode,{
+			sourcePrefix: "data-",
+			destPrefix: "data-"
+		});
+		this.assignAttributes(domNode,{
+			sourcePrefix: "aria-",
+			destPrefix: "aria-"
+		});
 		parent.insertBefore(domNode,nextSibling);
-		this.renderChildren(domNode,null);
 		this.domNodes.push(domNode);
+		this.renderChildren(domNode,null);
 	}
 };
 
@@ -61,33 +66,53 @@ LinkWidget.prototype.renderLink = function(parent,nextSibling) {
 		tag = "a";
 	}
 	// Create our element
-	var domNode = this.document.createElement(tag);
+	var namespace = this.getVariable("namespace",{defaultValue: "http://www.w3.org/1999/xhtml"}),
+		domNode = this.document.createElementNS(namespace,tag);
 	// Assign classes
 	var classes = [];
-	if(this.linkClasses) {
-		classes.push(this.linkClasses);
-	}
-	classes.push("tc-tiddlylink");
-	if(this.isShadow) {
-		classes.push("tc-tiddlylink-shadow");
-	}
-	if(this.isMissing && !this.isShadow) {
-		classes.push("tc-tiddlylink-missing");
-	} else {
-		if(!this.isMissing) {
-			classes.push("tc-tiddlylink-resolves");
+	if(this.overrideClasses === undefined) {
+		classes.push("tc-tiddlylink");
+		if(this.isShadow) {
+			classes.push("tc-tiddlylink-shadow");
 		}
+		if(this.isMissing && !this.isShadow) {
+			classes.push("tc-tiddlylink-missing");
+		} else {
+			if(!this.isMissing) {
+				classes.push("tc-tiddlylink-resolves");
+			}
+		}
+		if(this.linkClasses) {
+			classes.push(this.linkClasses);
+		}
+	} else if(this.overrideClasses !== "") {
+		classes.push(this.overrideClasses);
 	}
-	domNode.setAttribute("class",classes.join(" "));
+	if(classes.length > 0) {
+		domNode.setAttribute("class",classes.join(" "));
+	}
 	// Set an href
-	var wikiLinkTemplateMacro = this.getVariable("tv-wikilink-template"),
-		wikiLinkTemplate = wikiLinkTemplateMacro ? wikiLinkTemplateMacro.trim() : "#$uri_encoded$",
-		wikiLinkText = $tw.utils.replaceString(wikiLinkTemplate,"$uri_encoded$",encodeURIComponent(this.to));
-	wikiLinkText = $tw.utils.replaceString(wikiLinkText,"$uri_doubleencoded$",encodeURIComponent(encodeURIComponent(this.to)));
+	var wikilinkTransformFilter = this.getVariable("tv-filter-export-link"),
+		wikiLinkText;
+	if(wikilinkTransformFilter) {
+		// Use the filter to construct the href
+		wikiLinkText = this.wiki.filterTiddlers(wikilinkTransformFilter,this,function(iterator) {
+			iterator(self.wiki.getTiddler(self.to),self.to);
+		})[0];
+	} else {
+		// Expand the tv-wikilink-template variable to construct the href
+		var wikiLinkTemplateMacro = this.getVariable("tv-wikilink-template"),
+			wikiLinkTemplate = wikiLinkTemplateMacro ? wikiLinkTemplateMacro.trim() : "#$uri_encoded$";
+		wikiLinkText = $tw.utils.replaceString(wikiLinkTemplate,"$uri_encoded$",$tw.utils.encodeURIComponentExtended(this.to));
+		wikiLinkText = $tw.utils.replaceString(wikiLinkText,"$uri_doubleencoded$",$tw.utils.encodeURIComponentExtended($tw.utils.encodeURIComponentExtended(this.to)));
+	}
+	// Override with the value of tv-get-export-link if defined
 	wikiLinkText = this.getVariable("tv-get-export-link",{params: [{name: "to",value: this.to}],defaultValue: wikiLinkText});
 	if(tag === "a") {
-		domNode.setAttribute("href",wikiLinkText);
+		var namespaceHref = (namespace === "http://www.w3.org/2000/svg") ? "http://www.w3.org/1999/xlink" : undefined;
+		domNode.setAttributeNS(namespaceHref,"href",wikiLinkText);
 	}
+	// Set the tabindex
 	if(this.tabIndex) {
 		domNode.setAttribute("tabindex",this.tabIndex);
 	}
@@ -96,31 +121,46 @@ LinkWidget.prototype.renderLink = function(parent,nextSibling) {
 	var tooltipWikiText = this.tooltip || this.getVariable("tv-wikilink-tooltip");
 	if(tooltipWikiText) {
 		var tooltipText = this.wiki.renderText("text/plain","text/vnd.tiddlywiki",tooltipWikiText,{
-				parseAsInline: true,
-				variables: {
-					currentTiddler: this.to
-				},
-				parentWidget: this
-			});
+			parseAsInline: true,
+			variables: {
+				currentTiddler: this.to
+			},
+			parentWidget: this
+		});
 		domNode.setAttribute("title",tooltipText);
 	}
-	if(this["aria-label"]) {
-		domNode.setAttribute("aria-label",this["aria-label"]);
+	if(this.role) {
+		domNode.setAttribute("role",this.role);
 	}
+	this.assignAttributes(domNode,{
+		sourcePrefix: "aria-",
+		destPrefix: "aria-"
+	});
 	// Add a click event handler
 	$tw.utils.addEventListeners(domNode,[
 		{name: "click", handlerObject: this, handlerMethod: "handleClickEvent"},
 	]);
+	// Make the link draggable if required
 	if(this.draggable === "yes") {
-		$tw.utils.addEventListeners(domNode,[
-			{name: "dragstart", handlerObject: this, handlerMethod: "handleDragStartEvent"},
-			{name: "dragend", handlerObject: this, handlerMethod: "handleDragEndEvent"}
-		]);
+		$tw.utils.makeDraggable({
+			domNode: domNode,
+			dragTiddlerFn: function() {return self.to;},
+			startActions: self.startActions,
+			endActions: self.endActions,
+			widget: this
+		});
+	} else if(this.draggable === "no") {
+		domNode.setAttribute("draggable","false");
 	}
+	// Assign data- attributes
+	this.assignAttributes(domNode,{
+		sourcePrefix: "data-",
+		destPrefix: "data-"
+	});
 	// Insert the link into the DOM and render any children
 	parent.insertBefore(domNode,nextSibling);
-	this.renderChildren(domNode,null);
 	this.domNodes.push(domNode);
+	this.renderChildren(domNode,null);
 };
 
 LinkWidget.prototype.handleClickEvent = function(event) {
@@ -133,74 +173,24 @@ LinkWidget.prototype.handleClickEvent = function(event) {
 		navigateFromNode: this,
 		navigateFromClientRect: { top: bounds.top, left: bounds.left, width: bounds.width, right: bounds.right, bottom: bounds.bottom, height: bounds.height
 		},
-		navigateSuppressNavigation: event.metaKey || event.ctrlKey || (event.button === 1)
+		navigateFromClientTop: bounds.top,
+		navigateFromClientLeft: bounds.left,
+		navigateFromClientWidth: bounds.width,
+		navigateFromClientRight: bounds.right,
+		navigateFromClientBottom: bounds.bottom,
+		navigateFromClientHeight: bounds.height,
+		navigateSuppressNavigation: event.metaKey || event.ctrlKey || (event.button === 1),
+		metaKey: event.metaKey,
+		ctrlKey: event.ctrlKey,
+		altKey: event.altKey,
+		shiftKey: event.shiftKey,
+		event: event
 	});
 	if(this.domNodes[0].hasAttribute("href")) {
 		event.preventDefault();
 	}
 	event.stopPropagation();
 	return false;
-};
-
-LinkWidget.prototype.handleDragStartEvent = function(event) {
-	if(event.target === this.domNodes[0]) {
-		if(this.to) {
-			$tw.dragInProgress = true;
-			// Set the dragging class on the element being dragged
-			$tw.utils.addClass(event.target,"tc-tiddlylink-dragging");
-			// Create the drag image elements
-			this.dragImage = this.document.createElement("div");
-			this.dragImage.className = "tc-tiddler-dragger";
-			var inner = this.document.createElement("div");
-			inner.className = "tc-tiddler-dragger-inner";
-			inner.appendChild(this.document.createTextNode(this.to));
-			this.dragImage.appendChild(inner);
-			this.document.body.appendChild(this.dragImage);
-			// Astoundingly, we need to cover the dragger up: http://www.kryogenix.org/code/browser/custom-drag-image.html
-			var cover = this.document.createElement("div");
-			cover.className = "tc-tiddler-dragger-cover";
-			cover.style.left = (inner.offsetLeft - 16) + "px";
-			cover.style.top = (inner.offsetTop - 16) + "px";
-			cover.style.width = (inner.offsetWidth + 32) + "px";
-			cover.style.height = (inner.offsetHeight + 32) + "px";
-			this.dragImage.appendChild(cover);
-			// Set the data transfer properties
-			var dataTransfer = event.dataTransfer;
-			// First the image
-			dataTransfer.effectAllowed = "copy";
-			if(dataTransfer.setDragImage) {
-				dataTransfer.setDragImage(this.dragImage.firstChild,-16,-16);
-			}
-			// Then the data
-			dataTransfer.clearData();
-			var jsonData = this.wiki.getTiddlerAsJson(this.to),
-				textData = this.wiki.getTiddlerText(this.to,""),
-				title = (new RegExp("^" + $tw.config.textPrimitives.wikiLink + "$","mg")).exec(this.to) ? this.to : "[[" + this.to + "]]";
-			// IE doesn't like these content types
-			if(!$tw.browser.isIE) {
-				dataTransfer.setData("text/vnd.tiddler",jsonData);
-				dataTransfer.setData("text/plain",title);
-				dataTransfer.setData("text/x-moz-url","data:text/vnd.tiddler," + encodeURIComponent(jsonData));
-			}
-			dataTransfer.setData("URL","data:text/vnd.tiddler," + encodeURIComponent(jsonData));
-			dataTransfer.setData("Text",title);
-			event.stopPropagation();
-		} else {
-			event.preventDefault();
-		}
-	}
-};
-
-LinkWidget.prototype.handleDragEndEvent = function(event) {
-	if(event.target === this.domNodes[0]) {
-		$tw.dragInProgress = false;
-		// Remove the dragging class on the element being dragged
-		$tw.utils.removeClass(event.target,"tc-tiddlylink-dragging");
-		// Delete the drag image element
-		if(this.dragImage) {
-			this.dragImage.parentNode.removeChild(this.dragImage);
-		}
-	}
 };
 
 /*
@@ -210,17 +200,27 @@ LinkWidget.prototype.execute = function() {
 	// Pick up our attributes
 	this.to = this.getAttribute("to",this.getVariable("currentTiddler"));
 	this.tooltip = this.getAttribute("tooltip");
-	this["aria-label"] = this.getAttribute("aria-label");
+	this.role = this.getAttribute("role");
 	this.linkClasses = this.getAttribute("class");
+	this.overrideClasses = this.getAttribute("overrideClass");
 	this.tabIndex = this.getAttribute("tabindex");
 	this.draggable = this.getAttribute("draggable","yes");
+	this.startActions = this.getAttribute("startactions");
+	this.endActions = this.getAttribute("endactions");
 	this.linkTag = this.getAttribute("tag","a");
 	// Determine the link characteristics
 	this.isMissing = !this.wiki.tiddlerExists(this.to);
 	this.isShadow = this.wiki.isShadowTiddler(this.to);
-	this.hideMissingLinks = ($tw.wiki.getTiddlerText(MISSING_LINK_CONFIG_TITLE,"yes") === "no");
+	this.hideMissingLinks = (this.getVariable("tv-show-missing-links") || "yes") === "no";
 	// Make the child widgets
-	this.makeChildWidgets();
+	var templateTree;
+	if(this.parseTreeNode.children && this.parseTreeNode.children.length > 0) {
+		templateTree = this.parseTreeNode.children;
+	} else {
+		// Default template is a link to the title
+		templateTree = [{type: "text", text: this.to}];
+	}
+	this.makeChildWidgets(templateTree);
 };
 
 /*
@@ -228,7 +228,7 @@ Selectively refreshes the widget if needed. Returns true if the widget or any of
 */
 LinkWidget.prototype.refresh = function(changedTiddlers) {
 	var changedAttributes = this.computeAttributes();
-	if(changedAttributes.to || changedTiddlers[this.to] || changedAttributes["aria-label"] || changedAttributes.tooltip || changedTiddlers[MISSING_LINK_CONFIG_TITLE]) {
+	if($tw.utils.count(changedAttributes) > 0 || changedTiddlers[this.to]) {
 		this.refreshSelf();
 		return true;
 	}
@@ -236,5 +236,3 @@ LinkWidget.prototype.refresh = function(changedTiddlers) {
 };
 
 exports.link = LinkWidget;
-
-})();

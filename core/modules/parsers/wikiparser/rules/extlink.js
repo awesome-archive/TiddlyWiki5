@@ -6,7 +6,7 @@ module-type: wikirule
 Wiki text inline rule for external links. For example:
 
 ```
-An external link: http://www.tiddlywiki.com/
+An external link: https://www.tiddlywiki.com/
 
 A suppressed external link: ~http://www.tiddlyspace.com/
 ```
@@ -14,10 +14,7 @@ A suppressed external link: ~http://www.tiddlyspace.com/
 External links can be suppressed by preceding them with `~`.
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 exports.name = "extlink";
@@ -31,10 +28,12 @@ exports.init = function(parser) {
 
 exports.parse = function() {
 	// Move past the match
+	var start = this.parser.pos;
 	this.parser.pos = this.matchRegExp.lastIndex;
 	// Create the link unless it is suppressed
 	if(this.match[0].substr(0,1) === "~") {
-		return [{type: "text", text: this.match[0].substr(1)}];
+		// Start after the suppressing "~" so the span matches the plain text
+		return [{type: "text", text: this.match[0].substr(1), start: start + 1, end: this.parser.pos}];
 	} else {
 		return [{
 			type: "element",
@@ -46,10 +45,8 @@ exports.parse = function() {
 				rel: {type: "string", value: "noopener noreferrer"}
 			},
 			children: [{
-				type: "text", text: this.match[0]
+				type: "text", text: this.match[0], start: start, end: this.parser.pos
 			}]
 		}];
 	}
 };
-
-})();

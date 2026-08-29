@@ -1,9 +1,11 @@
 title: $:/core/templates/static.tiddler.html
 
 \define tv-wikilink-template() $uri_doubleencoded$.html
+\define tv-config-static() yes
 \define tv-config-toolbar-icons() no
 \define tv-config-toolbar-text() no
 \define tv-config-toolbar-class() tc-btn-invisible
+\import [subfilter{$:/core/config/GlobalImportFilter}]
 `<!doctype html>
 <html>
 <head>
@@ -21,10 +23,8 @@ title: $:/core/templates/static.tiddler.html
 </head>
 <body class="tc-body">
 `{{$:/StaticBanner||$:/core/templates/html-tiddler}}`
-<section class="tc-story-river">
-`<$importvariables filter="[[$:/core/ui/PageMacros]] [all[shadows+tiddlers]tag[$:/tags/Macro]!has[draft.of]]">
-<$view tiddler="$:/core/ui/ViewTemplate" format="htmlwikified"/>
-</$importvariables>`
+<section class="tc-story-river tc-static-story-river">
+`<$view tiddler="$:/core/ui/ViewTemplate" format="htmlwikified"/>`
 </section>
 </body>
 </html>

@@ -1,6 +1,6 @@
 caption: action-setfield
 created: 20141025120850184
-modified: 20150806171403798
+modified: 20250322010115457
 tags: Widgets ActionWidgets
 title: ActionSetFieldWidget
 type: text/vnd.tiddlywiki
@@ -14,7 +14,7 @@ The ''action-setfield'' widget is an [[action widget|ActionWidgets]] that assign
 The ''action-setfield'' widget is invisible. Any content within it is ignored.
 
 |!Attribute |!Description |
-|$tiddler |The title of the tiddler whose fields are to be modified (if not provided defaults to the [[current tiddler|Current Tiddler]] |
+|$tiddler |The title of the tiddler whose fields are to be modified (if not provided defaults to the [[current tiddler|Current Tiddler]]) |
 |$field |Optional name of a field to be assigned the $value attribute |
 |$index |Optional index of a property in a [[data tiddler|DataTiddlers]] to be assigned the $value attribute|
 |$value |The value to be assigned to the field or index identified by the $field or $index attribute. If neither is specified then the value is assigned to the text field. If no value is specified, $field or $index will be deleted.|
@@ -65,4 +65,11 @@ src='<$button>
 <$action-setfield $tiddler="$:/state/tab-1749438307" $field="text" $value="$:/core/ui/ControlPanel/Appearance"/>
 <$action-navigate $to="$:/ControlPanel"/>
 Go to Control Panel "Appearance" tab
+</$button>'/>
+
+Here is an example of a button that will update the value of an existing field in a tiddler
+<$macrocall $name='wikitext-example-without-html'
+src='<$button>
+<$action-setfield $tiddler="Test" existing_field_name="new field value"/>
+Update Field existing_field_name in tiddler Test
 </$button>'/>

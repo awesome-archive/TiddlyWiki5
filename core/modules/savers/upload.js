@@ -8,10 +8,7 @@ Handles saving changes via upload to a server.
 Designed to be compatible with BidiX's UploadPlugin at http://tiddlywiki.bidix.info/#UploadPlugin
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
@@ -28,18 +25,29 @@ UploadSaver.prototype.save = function(text,method,callback) {
 		password = $tw.utils.getPassword("upload"),
 		uploadDir = this.wiki.getTextReference("$:/UploadDir") || ".",
 		uploadFilename = this.wiki.getTextReference("$:/UploadFilename") || "index.html",
+		uploadWithUrlOnly = this.wiki.getTextReference("$:/UploadWithUrlOnly") || "no",
 		url = this.wiki.getTextReference("$:/UploadURL");
 	// Bail out if we don't have the bits we need
-	if(!username || username.toString().trim() === "" || !password || password.toString().trim() === "") {
-		return false;
+	if(uploadWithUrlOnly === "yes") {
+		// The url is good enough. No need for a username and password.
+		// Assume the server uses some other kind of auth mechanism.
+		if(!url || url.toString().trim() === "") {
+			return false;
+		}
+	}
+	else {
+		// Require username and password to be present.
+		// Assume the server uses the standard UploadPlugin username/password.
+		if(!username || username.toString().trim() === "" || !password || password.toString().trim() === "") {
+			return false;
+		}
 	}
 	// Construct the url if not provided
 	if(!url) {
-		url = "http://" + username + ".tiddlyspot.com/store.cgi";
+		url = "http://" + username + ".tiddlyhost.com/";
 	}
 	// Assemble the header
-	var boundary = "---------------------------" + "AaB03x";	
-	var uploadFormName = "UploadPlugin";
+	var boundary = "---------------------------" + "AaB03x";
 	var head = [];
 	head.push("--" + boundary + "\r\nContent-disposition: form-data; name=\"UploadPlugin\"\r\n");
 	head.push("backupDir=" + backupDir + ";user=" + username + ";password=" + password + ";uploaddir=" + uploadDir + ";;"); 
@@ -52,6 +60,7 @@ UploadSaver.prototype.save = function(text,method,callback) {
 	var tail = "\r\n--" + boundary + "--\r\n",
 		data = head.join("\r\n") + text + tail;
 	// Do the HTTP post
+	$tw.notifier.display("$:/language/Notifications/Save/Starting");
 	var http = new XMLHttpRequest();
 	http.open("POST",url,true,username,password);
 	http.setRequestHeader("Content-Type","multipart/form-data; charset=UTF-8; boundary=" + boundary);
@@ -69,7 +78,6 @@ UploadSaver.prototype.save = function(text,method,callback) {
 	} catch(ex) {
 		return callback($tw.language.getString("Error/Caption") + ":" + ex);
 	}
-	$tw.notifier.display("$:/language/Notifications/Save/Starting");
 	return true;
 };
 
@@ -95,5 +103,3 @@ Create an instance of this saver
 exports.create = function(wiki) {
 	return new UploadSaver(wiki);
 };
-
-})();

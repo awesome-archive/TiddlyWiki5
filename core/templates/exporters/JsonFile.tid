@@ -2,8 +2,6 @@ title: $:/core/templates/exporters/JsonFile
 tags: $:/tags/Exporter
 description: {{$:/language/Exporters/JsonFile}}
 extension: .json
+file-type: application/json
 
-\define renderContent()
-<$text text=<<jsontiddlers filter:"""$(exportFilter)$""">>/>
-\end
-<<renderContent>>
+<$macrocall $name="jsontiddlers" filter=<<exportFilter>> $output="text/raw"/>

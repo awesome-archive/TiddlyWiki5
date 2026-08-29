@@ -6,10 +6,7 @@ module-type: widget
 Count widget
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
@@ -45,7 +42,7 @@ CountWidget.prototype.execute = function() {
 	if(this.filter) {
 		this.currentCount = this.wiki.filterTiddlers(this.filter,this).length;
 	} else {
-		this.currentCount = undefined;
+		this.currentCount = "0";
 	}
 };
 
@@ -68,5 +65,3 @@ CountWidget.prototype.refresh = function(changedTiddlers) {
 };
 
 exports.count = CountWidget;
-
-})();

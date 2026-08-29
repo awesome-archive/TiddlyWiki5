@@ -1,4 +1,9 @@
+created: 20211117003509226
+modified: 20260102135713260
+tags: sampletag1 sampletag2 [[Widget Examples]]
 title: SampleTiddlerFirst
-tags: sampletag1 sampletag2
+type: text/vnd.tiddlywiki
 
-This is test tiddler SampleTiddlerFirst.
+This is a test tiddler called SampleTidlerFirst.
+It is used in [[DiffTextWidget]].
+You can modify its content.

@@ -6,10 +6,7 @@ module-type: startup
 A startup module to download every changed tiddler as a JSON file
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 // Export name and synchronous status
@@ -19,18 +16,65 @@ exports.after = ["startup"];
 exports.synchronous = true;
 
 // Favicon tiddler
-var SAVE_FILTER_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/save-filter",
-	ENABLE_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/enable",
-	ENABLE_DRAFTS_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/enable-drafts";
+var ENABLE_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/enable",
+	ENABLE_DRAFTS_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/enable-drafts",
+	SYNC_DRAFTS_FILTER_TIDDLER_TITLE = "$:/config/SaveTrailPlugin/sync-drafts-filter";
 
 exports.startup = function() {
 	$tw.savetrail = $tw.savetrail || {};
+	// Create a syncer to handle autosaving
 	$tw.savetrail.syncadaptor = new SaveTrailSyncAdaptor();
 	$tw.savetrail.syncer = new $tw.Syncer({
 		wiki: $tw.wiki,
 		syncadaptor: $tw.savetrail.syncadaptor,
-		titleSyncFilter: SAVE_FILTER_TIDDLER_TITLE,
-		logging: false
+		titleSyncFilter: SYNC_DRAFTS_FILTER_TIDDLER_TITLE,
+		logging: false,
+		disableUI: true
+	});
+	// Add hooks for trapping user actions
+	$tw.hooks.addHook("th-saving-tiddler",function(tiddler) {
+		if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
+			var oldTiddler = $tw.wiki.getTiddler(tiddler.fields.title);
+			if(oldTiddler) {
+				saveTiddlerFile(oldTiddler,{reason: "overwritten"});			
+			}
+			saveTiddlerFile(tiddler,{reason: "saved"});
+		}
+		return tiddler;
+	});
+	$tw.hooks.addHook("th-renaming-tiddler",function(newTiddler,oldTiddler) {
+		if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
+			if(oldTiddler) {
+				saveTiddlerFile(oldTiddler,{reason: "deleted"});			
+			}
+			saveTiddlerFile(newTiddler,{reason: "renamed"});
+		}
+		return newTiddler;
+	});
+	$tw.hooks.addHook("th-relinking-tiddler",function(newTiddler,oldTiddler) {
+		if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
+			if(oldTiddler) {
+				saveTiddlerFile(oldTiddler,{reason: "overwritten"});			
+			}
+			saveTiddlerFile(newTiddler,{reason: "relinked"});
+		}
+		return newTiddler;
+	});
+	$tw.hooks.addHook("th-importing-tiddler",function(tiddler) {
+		if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
+			var oldTiddler = $tw.wiki.getTiddler(tiddler.fields.title);
+			if(oldTiddler) {
+				saveTiddlerFile(oldTiddler,{reason: "overwritten"});			
+			}
+			saveTiddlerFile(tiddler,{reason: "imported"});
+		}
+		return tiddler;
+	});
+	$tw.hooks.addHook("th-deleting-tiddler",function(tiddler) {
+		if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
+			saveTiddlerFile(tiddler,{reason: "deleted"});
+		}
+		return tiddler;
 	});
 };
 
@@ -53,19 +97,17 @@ SaveTrailSyncAdaptor.prototype.getTiddlerInfo = function(tiddler) {
 Save a tiddler and invoke the callback with (err,adaptorInfo,revision)
 */
 SaveTrailSyncAdaptor.prototype.saveTiddler = function(tiddler,callback) {
-	if($tw.wiki.getTiddlerText(ENABLE_TIDDLER_TITLE).toLowerCase() === "yes") {
+	if($tw.wiki.checkTiddlerText(ENABLE_TIDDLER_TITLE,"yes")) {
 		var isDraft = $tw.utils.hop(tiddler.fields,"draft.of");
-		if(!isDraft || $tw.wiki.getTiddlerText(ENABLE_DRAFTS_TIDDLER_TITLE).toLowerCase() === "yes") {
-			saveTiddlerFile(tiddler);
+		if(!isDraft || $tw.wiki.checkTiddlerText(ENABLE_DRAFTS_TIDDLER_TITLE,"yes")) {
+			saveTiddlerFile(tiddler,{reason: "modified"});
 		}
 	}
-	callback(null);
+	callback(null,null);
 };
 
 /*
 Load a tiddler and invoke the callback with (err,tiddlerFields)
-
-We don't need to implement loading for the file system adaptor, because all the tiddler files will have been loaded during the boot process.
 */
 SaveTrailSyncAdaptor.prototype.loadTiddler = function(title,callback) {
 	callback(null,null);
@@ -75,14 +117,16 @@ SaveTrailSyncAdaptor.prototype.loadTiddler = function(title,callback) {
 Delete a tiddler and invoke the callback with (err)
 */
 SaveTrailSyncAdaptor.prototype.deleteTiddler = function(title,callback,options) {
-	callback(null);
+	callback(null,null);
 };
 
-function saveTiddlerFile(tiddler) {
-	var illegalFilenameCharacters = /<|>|\:|\"|\/|\\|\||\?|\*|\^|\s/g,
-		fixedTitle = tiddler.fields.title.replace(illegalFilenameCharacters,"_"),
+function saveTiddlerFile(tiddler,options) {
+	options = options || {};
+	var reason = options.reason || "changed",
+		illegalFilenameCharacters = /<|>|\:|\"|\/|\\|\||\?|\*|\^|\s/g,
+		fixedTitle = $tw.utils.transliterate(tiddler.fields.title).replace(illegalFilenameCharacters,"_"),
 		formattedDate = $tw.utils.stringifyDate(new Date()),
-		filename =  fixedTitle + "." + formattedDate + ".json",
+		filename =  fixedTitle + "." + formattedDate + "." + reason + ".json",
 		fields = new Object();
 	for(var field in tiddler.fields) {
 		fields[field] = tiddler.getFieldString(field);
@@ -92,8 +136,8 @@ function saveTiddlerFile(tiddler) {
 	link.setAttribute("target","_blank");
 	link.setAttribute("rel","noopener noreferrer");
 	if(Blob !== undefined) {
-		var blob = new Blob([text], {type: "text/plain"});
-		link.setAttribute("href", URL.createObjectURL(blob));
+		var blob = new Blob([text],{type: "text/plain"});
+		link.setAttribute("href",URL.createObjectURL(blob));
 	} else {
 		link.setAttribute("href","data:text/plain," + encodeURIComponent(text));
 	}
@@ -102,5 +146,3 @@ function saveTiddlerFile(tiddler) {
 	link.click();
 	document.body.removeChild(link);
 }
-
-})();

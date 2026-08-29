@@ -6,13 +6,8 @@ module-type: utils
 Notifier mechanism
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
-
-var widget = require("$:/core/modules/widgets/widget.js");
 
 var Notifier = function(wiki) {
 	this.wiki = wiki;
@@ -36,8 +31,9 @@ Notifier.prototype.display = function(title,options) {
 	if(!tiddler) {
 		return;
 	}
-	// Add classes
+	// Add classes and roles
 	$tw.utils.addClass(notification,"tc-notification");
+	notification.setAttribute("role","alert");
 	// Create the variables
 	var variables = $tw.utils.extend({currentTiddler: title},options.variables);
 	// Render the body of the notification
@@ -87,5 +83,3 @@ Notifier.prototype.display = function(title,options) {
 };
 
 exports.Notifier = Notifier;
-
-})();

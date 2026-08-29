@@ -12,8 +12,10 @@ op-parameter-name: T
 op-output: a selection containing only <<.place T>>
 op-neg-output: the input, but with tiddler <<.place T>> filtered out if it exists in the wiki
 
-`[title[An Example]]` can be shortened to `[[An Example]]`, because <<.op title>> is the default filter operator.
+`[title[An Example]]` can be shortened to `[[An Example]]`, because <<.op title>> is the default filter operator. Consequentially, `[!title[An Example]]` can be shortened to `[![An Example]]`.
 
 <<.op title>> is a [[constructor|Selection Constructors]] (except in the form `!title`), but <<.olink2 "field:title" field>> is a [[modifier|Selection Constructors]].
+
+<<.from-version "5.4.0">> If the operand is quoted with round brackets then the <<.op title>> operator returns the complete list of titles assigned to the multi-valued variable. When negated, the title operator with multi-valued operands returns all the titles that are not present in the operand list.
 
 <<.operator-examples "title">>

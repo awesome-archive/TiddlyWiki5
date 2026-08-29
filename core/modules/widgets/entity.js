@@ -6,10 +6,7 @@ module-type: widget
 HTML entity widget
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
@@ -28,6 +25,7 @@ Render this widget into the DOM
 */
 EntityWidget.prototype.render = function(parent,nextSibling) {
 	this.parentDomNode = parent;
+	this.computeAttributes();
 	this.execute();
 	var entityString = this.getAttribute("entity",this.parseTreeNode.entity || ""),
 		textNode = this.document.createTextNode($tw.utils.entityDecode(entityString));
@@ -50,10 +48,8 @@ EntityWidget.prototype.refresh = function(changedTiddlers) {
 		this.refreshSelf();
 		return true;
 	} else {
-		return false;	
+		return false;
 	}
 };
 
 exports.entity = EntityWidget;
-
-})();

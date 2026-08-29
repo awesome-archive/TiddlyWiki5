@@ -28,10 +28,7 @@ HTML nodes look like this:
 `
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
@@ -60,7 +57,7 @@ var WikiTextParser = function(type,text,options) {
 	this.output = null;
 	this.subWikify(this.children);
 	// prepend tw2 macros locally to the content
-	var parser = $tw.wiki.parseTiddler("$:/plugins/tiddlywiki/tw2parser/macrodefs",{parseAsInline:false});
+	var parser = this.wiki.parseTiddler("$:/plugins/tiddlywiki/tw2parser/macrodefs",{parseAsInline:false});
 	this.tree = [{
 		type: "element",
 		tag: "div",
@@ -70,7 +67,7 @@ var WikiTextParser = function(type,text,options) {
 	var root = JSON.parse(JSON.stringify(parser.tree));
 	// macros are defined in a linear tree; walk down the tree and append the source's parsed content 
 	var baseroot = root;
-	while (root[0] && root[0].children && root[0].children.length !== 0 ){ 
+	while(root[0] && root[0].children && root[0].children.length !== 0 ){ 
 		root = root[0].children;
 	}
 	root[0].children[0] = this.tree[0];
@@ -196,5 +193,3 @@ WikiTextParser.prototype.subWikifyTerm = function(output,terminatorRegExp) {
 };
 
 exports["text/x-tiddlywiki"] = WikiTextParser;
-
-})();

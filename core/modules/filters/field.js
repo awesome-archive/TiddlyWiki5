@@ -6,18 +6,15 @@ module-type: filteroperator
 Filter operator for comparing fields for equality
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
 Export our filter function
 */
 exports.field = function(source,operator,options) {
-	var results = [],
-		fieldname = (operator.suffix || operator.operator || "title").toLowerCase();
+	var results = [],indexedResults,
+		fieldname = operator.suffix || operator.operator || "title";
 	if(operator.prefix === "!") {
 		if(operator.regexp) {
 			source(function(tiddler,title) {
@@ -53,6 +50,12 @@ exports.field = function(source,operator,options) {
 				}
 			});
 		} else {
+			if(source.byField && operator.operand) {
+				indexedResults = source.byField(fieldname,operator.operand);
+				if(indexedResults) {
+					return indexedResults;
+				}
+			}
 			source(function(tiddler,title) {
 				if(tiddler) {
 					var text = tiddler.getFieldString(fieldname);
@@ -65,5 +68,3 @@ exports.field = function(source,operator,options) {
 	}
 	return results;
 };
-
-})();

@@ -6,31 +6,29 @@ module-type: filteroperator
 Filter operator for checking if a title starts with a prefix
 
 \*/
-(function(){
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 /*
 Export our filter function
 */
 exports.prefix = function(source,operator,options) {
-	var results = [];
-	if(operator.prefix === "!") {
-		source(function(tiddler,title) {
-			if(title.substr(0,operator.operand.length) !== operator.operand) {
-				results.push(title);
-			}
-		});
-	} else {
-		source(function(tiddler,title) {
-			if(title.substr(0,operator.operand.length) === operator.operand) {
-				results.push(title);
-			}
-		});
-	}
+	const results = [],
+		suffixes = (operator.suffixes || [])[0] || [],
+		caseInsensitive = suffixes.includes("caseinsensitive"),
+		negate = operator.prefix === "!";
+
+	const operand = caseInsensitive ?
+		operator.operand.toLowerCase() :
+		operator.operand;
+
+	source((tiddler,title) => {
+		const value = caseInsensitive ? title.toLowerCase() : title,
+			matches = value.startsWith(operand);
+		if(negate ? !matches : matches) {
+			results.push(title);
+		}
+	});
+
 	return results;
 };
-
-})();
